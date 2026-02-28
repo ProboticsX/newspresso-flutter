@@ -4,6 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'shots_page.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
+import 'podcasts_page.dart';
+import 'audio_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +36,14 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   int _selectedIndex = 0;
 
-  static const _tabs = [ShotsPage(), NewsListPage()];
+  static const _tabs = [
+    ShotsPage(),
+    NewsListPage(),
+    PodcastsPage(),
+    Center(
+      child: Text('Profile', style: TextStyle(color: Colors.white)),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -54,39 +63,189 @@ class _MainAppState extends State<MainApp> {
         backgroundColor: Colors.black,
         extendBody: true,
         body: IndexedStack(index: _selectedIndex, children: _tabs),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.06)),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Mini Player above tabs
+            ListenableBuilder(
+              listenable: AudioManager.instance,
+              builder: (context, _) {
+                final podcast = AudioManager.instance.currentPodcast;
+                final isPlaying = AudioManager.instance.isPlaying;
+
+                if (podcast == null) return const SizedBox.shrink();
+
+                return GestureDetector(
+                  onTap: () {
+                    // Open full player (not requested but could be added later)
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F1F1F),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.5),
+                          offset: const Offset(0, 4),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.article_outlined,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        podcast.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Published ${podcast.date}',
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: () {
+                                    if (isPlaying) {
+                                      AudioManager.instance.pause();
+                                    } else {
+                                      AudioManager.instance.resume();
+                                    }
+                                  },
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.15),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      isPlaying
+                                          ? Icons.pause
+                                          : Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Progress Bar at the bottom
+                          StreamBuilder<Duration>(
+                            stream: AudioManager.instance.player.positionStream,
+                            builder: (context, snapshot) {
+                              final position = snapshot.data ?? Duration.zero;
+                              final duration =
+                                  AudioManager.instance.player.duration ??
+                                  Duration.zero;
+                              final progress = duration.inMilliseconds > 0
+                                  ? position.inMilliseconds /
+                                        duration.inMilliseconds
+                                  : 0.0;
+                              return LinearProgressIndicator(
+                                value: progress.clamp(0.0, 1.0),
+                                backgroundColor: Colors.white.withOpacity(0.1),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                                minHeight: 2,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _NavItem(
-                    icon: Icons.local_cafe_outlined,
-                    activeIcon: Icons.local_cafe,
-                    label: 'Shots',
-                    isSelected: _selectedIndex == 0,
-                    onTap: () => setState(() => _selectedIndex = 0),
+            // Nav Bar
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+                border: Border(
+                  top: BorderSide(color: Colors.white.withOpacity(0.06)),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _NavItem(
+                        icon: Icons.local_cafe_outlined,
+                        activeIcon: Icons.local_cafe,
+                        label: 'Shots',
+                        isSelected: _selectedIndex == 0,
+                        onTap: () => setState(() => _selectedIndex = 0),
+                      ),
+                      _NavItem(
+                        icon: Icons.language_outlined,
+                        activeIcon: Icons.language,
+                        label: 'Explore',
+                        isSelected: _selectedIndex == 1,
+                        onTap: () => setState(() => _selectedIndex = 1),
+                      ),
+                      _NavItem(
+                        icon: Icons.play_circle_outline,
+                        activeIcon: Icons.play_circle,
+                        label: 'Podcasts',
+                        isSelected: _selectedIndex == 2,
+                        onTap: () => setState(() => _selectedIndex = 2),
+                      ),
+                      _NavItem(
+                        icon: Icons.person_outline,
+                        activeIcon: Icons.person,
+                        label: 'Profile',
+                        isSelected: _selectedIndex == 3,
+                        onTap: () => setState(() => _selectedIndex = 3),
+                      ),
+                    ],
                   ),
-                  _NavItem(
-                    icon: Icons.language_outlined,
-                    activeIcon: Icons.language,
-                    label: 'Explore',
-                    isSelected: _selectedIndex == 1,
-                    onTap: () => setState(() => _selectedIndex = 1),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -714,4 +873,3 @@ class _NewsListPageState extends State<NewsListPage> {
     );
   }
 }
-
