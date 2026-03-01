@@ -9,6 +9,8 @@ class PodcastItem {
   final String audioUrl;
   final String? imageUrl;
   final String? summary;
+  final List<dynamic> sources;
+  final List<dynamic> questions;
 
   PodcastItem({
     required this.title,
@@ -16,6 +18,8 @@ class PodcastItem {
     required this.audioUrl,
     this.imageUrl,
     this.summary,
+    this.sources = const [],
+    this.questions = const [],
   });
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'news_assistant_page.dart';
+import 'sources_modal.dart';
 
 class NewsDetailPage extends StatelessWidget {
   final String contentTitle;
@@ -151,57 +152,83 @@ class NewsDetailPage extends StatelessWidget {
                           fontSize: 13,
                         ),
                       ),
-                      Row(
-                        children: [
-                          if (articlesList.isNotEmpty)
-                            ...articlesList
-                                .take(3)
-                                .toList()
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                                  final index = entry.key;
-                                  final sourceItem =
-                                      entry.value as Map<String, dynamic>? ??
-                                      {};
-                                  final faviconUrl =
-                                      sourceItem['source_favicon_url']
-                                          ?.toString();
-                                  return Transform.translate(
-                                    offset: Offset(index * -8.0, 0),
-                                    child: Container(
-                                      width: 20,
-                                      height: 20,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[800],
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.black,
-                                          width: 1.5,
+                      GestureDetector(
+                        onTap: () {
+                          if (articlesList.isNotEmpty) {
+                            showSourcesModal(context, articlesList);
+                          }
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: Row(
+                          children: [
+                            if (articlesList.isNotEmpty)
+                              ...articlesList
+                                  .take(3)
+                                  .toList()
+                                  .asMap()
+                                  .entries
+                                  .map((entry) {
+                                    final index = entry.key;
+                                    final sourceItem =
+                                        entry.value as Map<String, dynamic>? ??
+                                        {};
+                                    final faviconUrl =
+                                        sourceItem['source_favicon_url']
+                                            ?.toString();
+                                    return Transform.translate(
+                                      offset: Offset(index * -8.0, 0),
+                                      child: Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[800],
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.black,
+                                            width: 1.5,
+                                          ),
+                                          image:
+                                              faviconUrl != null &&
+                                                  faviconUrl.isNotEmpty
+                                              ? DecorationImage(
+                                                  image: NetworkImage(
+                                                    faviconUrl,
+                                                  ),
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : null,
                                         ),
-                                        image:
-                                            faviconUrl != null &&
-                                                faviconUrl.isNotEmpty
-                                            ? DecorationImage(
-                                                image: NetworkImage(faviconUrl),
-                                                fit: BoxFit.cover,
+                                        child:
+                                            faviconUrl == null ||
+                                                faviconUrl.isEmpty
+                                            ? const Icon(
+                                                Icons.public,
+                                                size: 10,
+                                                color: Colors.white54,
                                               )
                                             : null,
                                       ),
-                                      child:
-                                          faviconUrl == null ||
-                                              faviconUrl.isEmpty
-                                          ? const Icon(
-                                              Icons.public,
-                                              size: 10,
-                                              color: Colors.white54,
-                                            )
-                                          : null,
-                                    ),
-                                  );
-                                }),
+                                    );
+                                  }),
 
-                          if (totalSources > 0)
+                            if (totalSources > 0)
+                              Transform.translate(
+                                offset: Offset(
+                                  (articlesList.length > 3
+                                          ? 3
+                                          : articlesList.length) *
+                                      -4.0,
+                                  0,
+                                ),
+                                child: Text(
+                                  ' +$totalSources Sources',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+
                             Transform.translate(
                               offset: Offset(
                                 (articlesList.length > 3
@@ -210,33 +237,17 @@ class NewsDetailPage extends StatelessWidget {
                                     -4.0,
                                 0,
                               ),
-                              child: Text(
-                                ' +$totalSources Sources',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
+                              child: const Padding(
+                                padding: EdgeInsets.only(left: 4.0),
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white54,
+                                  size: 16,
                                 ),
                               ),
                             ),
-
-                          Transform.translate(
-                            offset: Offset(
-                              (articlesList.length > 3
-                                      ? 3
-                                      : articlesList.length) *
-                                  -4.0,
-                              0,
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.only(left: 4.0),
-                              child: Icon(
-                                Icons.chevron_right,
-                                color: Colors.white54,
-                                size: 16,
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),

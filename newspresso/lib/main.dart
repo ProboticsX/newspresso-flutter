@@ -6,6 +6,7 @@ import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
 import 'podcasts_page.dart';
 import 'audio_manager.dart';
+import 'podcast_detail_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,7 +78,13 @@ class _MainAppState extends State<MainApp> {
 
                 return GestureDetector(
                   onTap: () {
-                    // Open full player (not requested but could be added later)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            PodcastDetailScreen(podcast: podcast),
+                      ),
+                    );
                   },
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -105,7 +112,7 @@ class _MainAppState extends State<MainApp> {
                             child: Row(
                               children: [
                                 const Icon(
-                                  Icons.article_outlined,
+                                  Icons.headphones,
                                   color: Colors.white,
                                   size: 28,
                                 ),
@@ -395,7 +402,12 @@ class _NewsListPageState extends State<NewsListPage> {
       appBar: AppBar(
         title: const Text(
           'Newspresso',
-          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: Colors.white,
+            letterSpacing: 0.2,
+          ),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
