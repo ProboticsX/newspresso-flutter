@@ -7,6 +7,8 @@ import 'news_detail_page.dart';
 import 'podcasts_page.dart';
 import 'audio_manager.dart';
 import 'podcast_detail_screen.dart';
+import 'login_screen.dart';
+import 'profile_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,16 +37,24 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  int _selectedIndex = 0;
+  // Auth state: null = loading, true = logged in, false = logged out
+  bool? _isAuthenticated;
 
-  static const _tabs = [
-    ShotsPage(),
-    NewsListPage(),
-    PodcastsPage(),
-    Center(
-      child: Text('Profile', style: TextStyle(color: Colors.white)),
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Seed current session immediately
+    final session = Supabase.instance.client.auth.currentSession;
+    _isAuthenticated = session != null;
+    // Listen for future auth changes (sign-in, sign-out, token refresh)
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (mounted) {
+        setState(() {
+          _isAuthenticated = data.session != null;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,9 +70,43 @@ class _MainAppState extends State<MainApp> {
         useMaterial3: true,
         fontFamily: 'Inter',
       ),
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        extendBody: true,
+      home: _isAuthenticated == null
+          // Still resolving session — show a brief splash
+          ? const Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(
+                child: CircularProgressIndicator(color: Color(0xFFC8936A)),
+              ),
+            )
+          : _isAuthenticated!
+          ? const _MainShell()
+          : const LoginScreen(),
+    );
+  }
+}
+
+class _MainShell extends StatefulWidget {
+  const _MainShell();
+
+  @override
+  State<_MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<_MainShell> {
+  int _selectedIndex = 0;
+
+  static const _tabs = [
+    ShotsPage(),
+    NewsListPage(),
+    PodcastsPage(),
+    ProfilePage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBody: true,
         body: IndexedStack(index: _selectedIndex, children: _tabs),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
@@ -254,8 +298,7 @@ class _MainAppState extends State<MainApp> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 

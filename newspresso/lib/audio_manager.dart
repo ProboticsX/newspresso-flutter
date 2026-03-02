@@ -116,6 +116,13 @@ class AudioManager extends ChangeNotifier {
     });
   }
 
+  Future<void> stop() async {
+    await player.stop().catchError((e) => debugPrint("Error stopping: $e"));
+    currentPodcast = null;
+    isPlaying = false;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     player.dispose();
