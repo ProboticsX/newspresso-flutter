@@ -71,3 +71,5 @@ engine/
 
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+ios/Runner/Info.plist
+newspresso/ios/Runner/Info.plist
