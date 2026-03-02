@@ -72,6 +72,7 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() => _isSigningOut = true);
     try {
       await AudioManager.instance.stop();
+      await Future.delayed(const Duration(milliseconds: 800));
       // Call Supabase edge function or RPC to delete user
       await Supabase.instance.client.rpc('delete_user');
       await GoogleSignIn().signOut();

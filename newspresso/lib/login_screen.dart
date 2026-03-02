@@ -27,12 +27,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final GoogleSignIn googleSignIn = GoogleSignIn(
-        // serverClientId required so ID token is minted for Supabase
         serverClientId: webClientId,
       );
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
-        // User cancelled the sign-in
         setState(() => _isLoading = false);
         return;
       }
@@ -49,7 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: idToken,
         accessToken: accessToken,
       );
-      // Auth state listener in main.dart will handle navigation automatically
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -69,54 +66,63 @@ class _LoginScreenState extends State<LoginScreen> {
             colors: [Color(0xFF6B4E38), Colors.black],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            stops: [0.0, 0.45],
+            stops: [0.0, 0.35],
           ),
         ),
         child: SafeArea(
+          child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
               const Spacer(flex: 2),
 
-              // Logo / Branding
-              Column(
-                children: [
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFC8936A).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFC8936A).withValues(alpha: 0.4),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.local_cafe,
-                      color: Color(0xFFC8936A),
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Newspresso',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Your daily shot of news',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 16,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ],
+              // App icon
+              ClipOval(
+                child: Image.asset(
+                  'appicon.png',
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.cover,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              const Text(
+                'Newspresso',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                'Your Personalized News Hub',
+                style: TextStyle(color: Colors.white54, fontSize: 16),
+              ),
+
+              const Spacer(flex: 2),
+
+              // Feature cards
+              _FeatureCard(
+                icon: Icons.feed_outlined,
+                title: 'AI Curated Headlines',
+                subtitle: 'Read what matters to you',
+              ),
+              const SizedBox(height: 12),
+              _FeatureCard(
+                icon: Icons.headphones,
+                title: 'AI News Podcasts',
+                subtitle: 'Listen to news on the go',
+              ),
+              const SizedBox(height: 12),
+              _FeatureCard(
+                icon: Icons.psychology_outlined,
+                title: 'Smart Assistant',
+                subtitle: 'Ask questions, Be curious',
               ),
 
               const Spacer(flex: 2),
@@ -124,10 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
               // Error message
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.only(bottom: 16),
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -148,88 +151,132 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-              // Google Sign-in Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: GestureDetector(
-                  onTap: _isLoading ? null : _signInWithGoogle,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: double.infinity,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: _isLoading
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: _isLoading
-                          ? []
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                    ),
-                    child: _isLoading
-                        ? const Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFC8936A),
-                                strokeWidth: 2.5,
+              // Sign in button
+              GestureDetector(
+                onTap: _isLoading ? null : _signInWithGoogle,
+                child: Container(
+                  width: double.infinity,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _isLoading
+                        ? Colors.white.withValues(alpha: 0.7)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: _isLoading
+                      ? const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFC8936A),
+                              strokeWidth: 2.5,
+                            ),
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _GoogleLogo(),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Sign in with Google',
+                              style: TextStyle(
+                                color: Color(0xFF1A1A1A),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Google 'G' icon painted manually
-                              _GoogleLogo(),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'Continue with Google',
-                                style: TextStyle(
-                                  color: Color(0xFF1A1A1A),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
+                          ],
+                        ),
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-              // Terms note
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'By continuing, you agree to our Terms of Service and Privacy Policy.',
-                  style: TextStyle(
-                    color: Colors.white30,
-                    fontSize: 12,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
+              const Text(
+                'By signing in, you agree to our Terms of Service and\nPrivacy Policy',
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                  height: 1.5,
                 ),
+                textAlign: TextAlign.center,
               ),
 
-              const Spacer(),
+              const SizedBox(height: 10),
+
+              const Text(
+                'Version 1.0.0',
+                style: TextStyle(color: Colors.white24, fontSize: 12),
+              ),
+
+              const SizedBox(height: 16),
             ],
           ),
         ),
+      ),
+    ),
+  );
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _FeatureCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1410),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: const Color(0xFFC8936A), size: 24),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Simple Google "G" logo painted with colored segments
 class _GoogleLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -244,61 +291,33 @@ class _GoogleLogo extends StatelessWidget {
 class _GoogleGPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2;
+    final ar = r * 0.64;
+    final sw = r * 0.27;
 
-    // Draw background circle
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-
-    // Instead of a complex G, just use the Google colors arc pattern
-    final rect = Rect.fromCircle(center: center, radius: radius * 0.75);
-    final strokePaint = Paint()
+    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: ar);
+    final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = radius * 0.3
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.butt;
 
-    // Red (top-right)
-    canvas.drawArc(
-      rect,
-      -1.2,
-      1.4,
-      false,
-      strokePaint..color = const Color(0xFFEA4335),
-    );
-    // Yellow (bottom)
-    canvas.drawArc(
-      rect,
-      0.2,
-      1.6,
-      false,
-      strokePaint..color = const Color(0xFFFBBC05),
-    );
-    // Green (bottom-left)
-    canvas.drawArc(
-      rect,
-      1.8,
-      1.4,
-      false,
-      strokePaint..color = const Color(0xFF34A853),
-    );
-    // Blue (left-top)
-    canvas.drawArc(
-      rect,
-      3.2,
-      1.1,
-      false,
-      strokePaint..color = const Color(0xFF4285F4),
-    );
+    // Gap on the right (3 o'clock), ±0.45 rad.
+    // Clockwise from gap bottom: Red → Yellow → Green → Blue
+    canvas.drawArc(rect, 0.45, 0.85, false, paint..color = const Color(0xFFEA4335));
+    canvas.drawArc(rect, 1.30, 1.55, false, paint..color = const Color(0xFFFBBC05));
+    canvas.drawArc(rect, 2.85, 1.60, false, paint..color = const Color(0xFF34A853));
+    canvas.drawArc(rect, 4.45, 1.38, false, paint..color = const Color(0xFF4285F4));
 
-    // Cross bar for the G
-    final barPaint = Paint()
-      ..color = const Color(0xFF4285F4)
-      ..strokeWidth = radius * 0.3
-      ..strokeCap = StrokeCap.round;
+    // Horizontal crossbar at center-y, from center to arc edge
     canvas.drawLine(
-      Offset(center.dx, center.dy),
-      Offset(center.dx + radius * 0.65, center.dy),
-      barPaint,
+      Offset(cx, cy),
+      Offset(cx + ar, cy),
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..strokeWidth = sw
+        ..strokeCap = StrokeCap.square,
     );
   }
 
