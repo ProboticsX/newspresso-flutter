@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'shots_page.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
@@ -27,6 +28,10 @@ void main() async {
   }
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  await MobileAds.instance.initialize();
+  MobileAds.instance.updateRequestConfiguration(
+    RequestConfiguration(testDeviceIds: ['107d93066e57249258efb7fb01151b4d']),
+  );
 
   runApp(const MainApp());
 }

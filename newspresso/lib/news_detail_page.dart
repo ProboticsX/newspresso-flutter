@@ -1,8 +1,16 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
 
-class NewsDetailPage extends StatelessWidget {
+// TODO: Swap back to real IDs once AdMob account is approved
+// Android real: ca-app-pub-6690667089410073/1778742522
+// iOS real:     ca-app-pub-6690667089410073/4164790845
+const String _androidBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+const String _iosBannerAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
+
+class NewsDetailPage extends StatefulWidget {
   final String contentTitle;
   final String? imageUrl;
   final String contentSummary;
@@ -23,8 +31,56 @@ class NewsDetailPage extends StatelessWidget {
   });
 
   @override
+  State<NewsDetailPage> createState() => _NewsDetailPageState();
+}
+
+class _NewsDetailPageState extends State<NewsDetailPage> {
+  BannerAd? _bannerAd;
+  bool _bannerAdLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    final adUnitId =
+        Platform.isAndroid ? _androidBannerAdUnitId : _iosBannerAdUnitId;
+
+    _bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) setState(() => _bannerAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          _bannerAd = null;
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: _bannerAdLoaded && _bannerAd != null
+          ? Container(
+              color: Colors.black,
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            )
+          : null,
       body: Container(
         height: double.infinity,
         decoration: const BoxDecoration(
@@ -54,7 +110,7 @@ class NewsDetailPage extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white24, width: 0.5),
-                        color: Colors.white.withOpacity(0.0),
+                        color: Colors.white.withValues(alpha: 0.0),
                       ),
                       child: const Padding(
                         padding: EdgeInsets.only(left: 6.0),
@@ -78,9 +134,10 @@ class NewsDetailPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       child: Stack(
                         children: [
-                          imageUrl != null && imageUrl!.isNotEmpty
+                          widget.imageUrl != null &&
+                                  widget.imageUrl!.isNotEmpty
                               ? Image.network(
-                                  imageUrl!,
+                                  widget.imageUrl!,
                                   height: 240,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
@@ -110,8 +167,8 @@ class NewsDetailPage extends StatelessWidget {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Colors.black.withOpacity(0.0),
-                                  Colors.black.withOpacity(0.95),
+                                  Colors.black.withValues(alpha: 0.0),
+                                  Colors.black.withValues(alpha: 0.95),
                                 ],
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
@@ -125,7 +182,7 @@ class NewsDetailPage extends StatelessWidget {
                             left: 16,
                             right: 16,
                             child: Text(
-                              contentTitle,
+                              widget.contentTitle,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 22,
@@ -146,7 +203,7 @@ class NewsDetailPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        publishedText,
+                        widget.publishedText,
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 13,
@@ -154,15 +211,15 @@ class NewsDetailPage extends StatelessWidget {
                       ),
                       GestureDetector(
                         onTap: () {
-                          if (articlesList.isNotEmpty) {
-                            showSourcesModal(context, articlesList);
+                          if (widget.articlesList.isNotEmpty) {
+                            showSourcesModal(context, widget.articlesList);
                           }
                         },
                         behavior: HitTestBehavior.opaque,
                         child: Row(
                           children: [
-                            if (articlesList.isNotEmpty)
-                              ...articlesList
+                            if (widget.articlesList.isNotEmpty)
+                              ...widget.articlesList
                                   .take(3)
                                   .toList()
                                   .asMap()
@@ -211,17 +268,17 @@ class NewsDetailPage extends StatelessWidget {
                                     );
                                   }),
 
-                            if (totalSources > 0)
+                            if (widget.totalSources > 0)
                               Transform.translate(
                                 offset: Offset(
-                                  (articlesList.length > 3
+                                  (widget.articlesList.length > 3
                                           ? 3
-                                          : articlesList.length) *
+                                          : widget.articlesList.length) *
                                       -4.0,
                                   0,
                                 ),
                                 child: Text(
-                                  ' +$totalSources Sources',
+                                  ' +${widget.totalSources} Sources',
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 12,
@@ -231,9 +288,9 @@ class NewsDetailPage extends StatelessWidget {
 
                             Transform.translate(
                               offset: Offset(
-                                (articlesList.length > 3
+                                (widget.articlesList.length > 3
                                         ? 3
-                                        : articlesList.length) *
+                                        : widget.articlesList.length) *
                                     -4.0,
                                 0,
                               ),
@@ -256,7 +313,7 @@ class NewsDetailPage extends StatelessWidget {
 
                   // Summary/Content
                   Text(
-                    contentSummary,
+                    widget.contentSummary,
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
@@ -268,7 +325,7 @@ class NewsDetailPage extends StatelessWidget {
                   const SizedBox(height: 32),
 
                   // Follow Up Section
-                  if (questionsList.isNotEmpty) ...[
+                  if (widget.questionsList.isNotEmpty) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -287,7 +344,7 @@ class NewsDetailPage extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => NewsAssistantPage(
-                                  newsTitle: contentTitle,
+                                  newsTitle: widget.contentTitle,
                                   prefillQuestion: '',
                                 ),
                               ),
@@ -299,7 +356,7 @@ class NewsDetailPage extends StatelessWidget {
                               vertical: 7,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
+                              color: Colors.white.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Row(
@@ -325,14 +382,14 @@ class NewsDetailPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
 
-                    ...questionsList.map((q) {
+                    ...widget.questionsList.map((q) {
                       return GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => NewsAssistantPage(
-                                newsTitle: contentTitle,
+                                newsTitle: widget.contentTitle,
                                 prefillQuestion: q,
                               ),
                             ),
