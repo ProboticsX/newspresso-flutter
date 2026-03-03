@@ -100,7 +100,7 @@ void showSourcesModal(BuildContext context, List<dynamic> articlesList) {
                           if (await canLaunchUrl(uri)) {
                             await launchUrl(
                               uri,
-                              mode: LaunchMode.externalApplication,
+                              mode: LaunchMode.inAppBrowserView,
                             );
                           }
                         }
