@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'audio_manager.dart';
+import 'plan_page.dart';
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isSigningOut = false;
   Map<String, dynamic>? _userProfile;
   bool _loadingProfile = true;
+  bool _isPremium = false;
 
   @override
   void initState() {
@@ -30,12 +32,13 @@ class _ProfilePageState extends State<ProfilePage> {
       if (userId == null) return;
       final result = await Supabase.instance.client
           .from('users')
-          .select('first_name, last_name, date_of_birth, gender, username, email')
+          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium')
           .eq('id', userId)
           .maybeSingle();
       if (mounted) {
         setState(() {
           _userProfile = result;
+          _isPremium = result?['is_premium'] == true;
           _loadingProfile = false;
         });
       }
@@ -203,6 +206,37 @@ class _ProfilePageState extends State<ProfilePage> {
                                   );
                                   // Refresh in case profile was edited
                                   _fetchUserProfile();
+                                },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── Plan ─────────────────────────────────────────
+                          _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF2A1A0A),
+                                icon: Icons.workspace_premium,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'Plan',
+                                subtitle: _isPremium
+                                    ? 'Newspresso Black'
+                                    : 'Free Plan',
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () async {
+                                  final result = await Navigator.push<bool>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          PlanPage(isPremium: _isPremium),
+                                    ),
+                                  );
+                                  if (result != null && mounted) {
+                                    setState(() => _isPremium = result);
+                                  }
                                 },
                               ),
                             ],

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
 
@@ -41,6 +42,23 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
   @override
   void initState() {
     super.initState();
+    _checkAndLoadAd();
+  }
+
+  Future<void> _checkAndLoadAd() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final result = await Supabase.instance.client
+            .from('users')
+            .select('is_premium')
+            .eq('id', userId)
+            .maybeSingle();
+        if (result?['is_premium'] == true) return; // premium: no ad
+      }
+    } catch (_) {
+      // fall through and load ad if check fails
+    }
     _loadBannerAd();
   }
 
