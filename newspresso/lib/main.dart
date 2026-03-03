@@ -9,6 +9,8 @@ import 'audio_manager.dart';
 import 'podcast_detail_screen.dart';
 import 'login_screen.dart';
 import 'profile_page.dart';
+import 'onboarding_flow.dart';
+import 'splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,23 +39,71 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  // Auth state: null = loading, true = logged in, false = logged out
+  // null = still resolving, true = authenticated, false = not authenticated
   bool? _isAuthenticated;
+  // true = has profile in users table, false = needs onboarding
+  bool _hasProfile = false;
+  bool _checkingProfile = false;
+  // Keeps splash visible for a minimum duration on first launch
+  bool _showSplash = true;
+  // Shows splash briefly after onboarding completes
+  bool _showCompletionSplash = false;
 
   @override
   void initState() {
     super.initState();
-    // Seed current session immediately
+
+    // Minimum splash display time
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _showSplash = false);
+    });
+
     final session = Supabase.instance.client.auth.currentSession;
-    _isAuthenticated = session != null;
-    // Listen for future auth changes (sign-in, sign-out, token refresh)
+    if (session != null) {
+      _isAuthenticated = true;
+      _checkUserProfile();
+    } else {
+      _isAuthenticated = false;
+    }
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (mounted) {
+      if (!mounted) return;
+      final isAuth = data.session != null;
+      if (isAuth && _isAuthenticated != true) {
+        setState(() => _isAuthenticated = true);
+        _checkUserProfile();
+      } else if (!isAuth) {
         setState(() {
-          _isAuthenticated = data.session != null;
+          _isAuthenticated = false;
+          _hasProfile = false;
+          _checkingProfile = false;
         });
       }
     });
+  }
+
+  Future<void> _checkUserProfile() async {
+    if (!mounted) return;
+    setState(() => _checkingProfile = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        if (mounted) setState(() => _checkingProfile = false);
+        return;
+      }
+      final result = await Supabase.instance.client
+          .from('users')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      if (mounted) {
+        setState(() {
+          _hasProfile = result != null;
+          _checkingProfile = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _checkingProfile = false);
+    }
   }
 
   @override
@@ -70,23 +120,43 @@ class _MainAppState extends State<MainApp> {
         useMaterial3: true,
         fontFamily: 'Inter',
       ),
-      home: _isAuthenticated == null
-          // Still resolving session — show a brief splash
-          ? const Scaffold(
-              backgroundColor: Colors.black,
-              body: Center(
-                child: CircularProgressIndicator(color: Color(0xFFC8936A)),
-              ),
-            )
-          : _isAuthenticated!
-          ? const _MainShell()
-          : const LoginScreen(),
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 500),
+        child: _buildHome(),
+      ),
     );
+  }
+
+  Widget _buildHome() {
+    if (_showSplash || _isAuthenticated == null || _checkingProfile) {
+      return const SplashScreen(key: ValueKey('splash'));
+    }
+    if (!_isAuthenticated!) {
+      return const LoginScreen(key: ValueKey('login'));
+    }
+    if (!_hasProfile) {
+      return OnboardingFlow(
+        key: const ValueKey('onboarding'),
+        onComplete: () {
+          setState(() {
+            _hasProfile = true;
+            _showCompletionSplash = true;
+          });
+          Future.delayed(const Duration(milliseconds: 2200), () {
+            if (mounted) setState(() => _showCompletionSplash = false);
+          });
+        },
+      );
+    }
+    if (_showCompletionSplash) {
+      return const SplashScreen(key: ValueKey('splash-complete'));
+    }
+    return const _MainShell(key: ValueKey('main'));
   }
 }
 
 class _MainShell extends StatefulWidget {
-  const _MainShell();
+  const _MainShell({super.key});
 
   @override
   State<_MainShell> createState() => _MainShellState();
@@ -118,7 +188,7 @@ class _MainShellState extends State<_MainShell> {
                 final podcast = AudioManager.instance.currentPodcast;
                 final isPlaying = AudioManager.instance.isPlaying;
 
-                if (podcast == null) return const SizedBox.shrink();
+                if (podcast == null || _selectedIndex == 0) return const SizedBox.shrink();
 
                 return GestureDetector(
                   onTap: () {

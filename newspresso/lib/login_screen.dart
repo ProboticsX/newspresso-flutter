@@ -3,6 +3,12 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+/// Holds an error message set by OnboardingFlow before signing out,
+/// so LoginScreen can display the reason on next render.
+class LoginErrorState {
+  static String? message;
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -13,6 +19,15 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (LoginErrorState.message != null) {
+      _error = LoginErrorState.message;
+      LoginErrorState.message = null;
+    }
+  }
 
   Future<void> _signInWithGoogle() async {
     setState(() {
