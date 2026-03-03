@@ -1,7 +1,107 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
+
+// ── Indian cities (city + state) for manual location search ──────────────────
+
+const List<Map<String, String>> kIndianCities = [
+  {'city': 'Mumbai', 'state': 'Maharashtra'},
+  {'city': 'Pune', 'state': 'Maharashtra'},
+  {'city': 'Nagpur', 'state': 'Maharashtra'},
+  {'city': 'Thane', 'state': 'Maharashtra'},
+  {'city': 'Nashik', 'state': 'Maharashtra'},
+  {'city': 'Aurangabad', 'state': 'Maharashtra'},
+  {'city': 'Solapur', 'state': 'Maharashtra'},
+  {'city': 'New Delhi', 'state': 'Delhi'},
+  {'city': 'Bengaluru', 'state': 'Karnataka'},
+  {'city': 'Mysuru', 'state': 'Karnataka'},
+  {'city': 'Hubli', 'state': 'Karnataka'},
+  {'city': 'Mangaluru', 'state': 'Karnataka'},
+  {'city': 'Belagavi', 'state': 'Karnataka'},
+  {'city': 'Chennai', 'state': 'Tamil Nadu'},
+  {'city': 'Coimbatore', 'state': 'Tamil Nadu'},
+  {'city': 'Madurai', 'state': 'Tamil Nadu'},
+  {'city': 'Salem', 'state': 'Tamil Nadu'},
+  {'city': 'Tiruchirappalli', 'state': 'Tamil Nadu'},
+  {'city': 'Tirunelveli', 'state': 'Tamil Nadu'},
+  {'city': 'Hyderabad', 'state': 'Telangana'},
+  {'city': 'Warangal', 'state': 'Telangana'},
+  {'city': 'Karimnagar', 'state': 'Telangana'},
+  {'city': 'Visakhapatnam', 'state': 'Andhra Pradesh'},
+  {'city': 'Vijayawada', 'state': 'Andhra Pradesh'},
+  {'city': 'Guntur', 'state': 'Andhra Pradesh'},
+  {'city': 'Nellore', 'state': 'Andhra Pradesh'},
+  {'city': 'Ahmedabad', 'state': 'Gujarat'},
+  {'city': 'Surat', 'state': 'Gujarat'},
+  {'city': 'Vadodara', 'state': 'Gujarat'},
+  {'city': 'Rajkot', 'state': 'Gujarat'},
+  {'city': 'Bhavnagar', 'state': 'Gujarat'},
+  {'city': 'Jaipur', 'state': 'Rajasthan'},
+  {'city': 'Jodhpur', 'state': 'Rajasthan'},
+  {'city': 'Udaipur', 'state': 'Rajasthan'},
+  {'city': 'Kota', 'state': 'Rajasthan'},
+  {'city': 'Bikaner', 'state': 'Rajasthan'},
+  {'city': 'Ajmer', 'state': 'Rajasthan'},
+  {'city': 'Lucknow', 'state': 'Uttar Pradesh'},
+  {'city': 'Kanpur', 'state': 'Uttar Pradesh'},
+  {'city': 'Agra', 'state': 'Uttar Pradesh'},
+  {'city': 'Varanasi', 'state': 'Uttar Pradesh'},
+  {'city': 'Ghaziabad', 'state': 'Uttar Pradesh'},
+  {'city': 'Meerut', 'state': 'Uttar Pradesh'},
+  {'city': 'Prayagraj', 'state': 'Uttar Pradesh'},
+  {'city': 'Noida', 'state': 'Uttar Pradesh'},
+  {'city': 'Kolkata', 'state': 'West Bengal'},
+  {'city': 'Howrah', 'state': 'West Bengal'},
+  {'city': 'Durgapur', 'state': 'West Bengal'},
+  {'city': 'Asansol', 'state': 'West Bengal'},
+  {'city': 'Patna', 'state': 'Bihar'},
+  {'city': 'Gaya', 'state': 'Bihar'},
+  {'city': 'Muzaffarpur', 'state': 'Bihar'},
+  {'city': 'Bhopal', 'state': 'Madhya Pradesh'},
+  {'city': 'Indore', 'state': 'Madhya Pradesh'},
+  {'city': 'Jabalpur', 'state': 'Madhya Pradesh'},
+  {'city': 'Gwalior', 'state': 'Madhya Pradesh'},
+  {'city': 'Ujjain', 'state': 'Madhya Pradesh'},
+  {'city': 'Ludhiana', 'state': 'Punjab'},
+  {'city': 'Amritsar', 'state': 'Punjab'},
+  {'city': 'Jalandhar', 'state': 'Punjab'},
+  {'city': 'Chandigarh', 'state': 'Chandigarh'},
+  {'city': 'Gurgaon', 'state': 'Haryana'},
+  {'city': 'Faridabad', 'state': 'Haryana'},
+  {'city': 'Ambala', 'state': 'Haryana'},
+  {'city': 'Bhubaneswar', 'state': 'Odisha'},
+  {'city': 'Cuttack', 'state': 'Odisha'},
+  {'city': 'Guwahati', 'state': 'Assam'},
+  {'city': 'Dibrugarh', 'state': 'Assam'},
+  {'city': 'Ranchi', 'state': 'Jharkhand'},
+  {'city': 'Jamshedpur', 'state': 'Jharkhand'},
+  {'city': 'Raipur', 'state': 'Chhattisgarh'},
+  {'city': 'Bilaspur', 'state': 'Chhattisgarh'},
+  {'city': 'Dehradun', 'state': 'Uttarakhand'},
+  {'city': 'Haridwar', 'state': 'Uttarakhand'},
+  {'city': 'Shimla', 'state': 'Himachal Pradesh'},
+  {'city': 'Dharamshala', 'state': 'Himachal Pradesh'},
+  {'city': 'Srinagar', 'state': 'Jammu & Kashmir'},
+  {'city': 'Jammu', 'state': 'Jammu & Kashmir'},
+  {'city': 'Thiruvananthapuram', 'state': 'Kerala'},
+  {'city': 'Kochi', 'state': 'Kerala'},
+  {'city': 'Kozhikode', 'state': 'Kerala'},
+  {'city': 'Thrissur', 'state': 'Kerala'},
+  {'city': 'Panaji', 'state': 'Goa'},
+  {'city': 'Margao', 'state': 'Goa'},
+  {'city': 'Imphal', 'state': 'Manipur'},
+  {'city': 'Shillong', 'state': 'Meghalaya'},
+  {'city': 'Agartala', 'state': 'Tripura'},
+  {'city': 'Gangtok', 'state': 'Sikkim'},
+  {'city': 'Itanagar', 'state': 'Arunachal Pradesh'},
+  {'city': 'Kohima', 'state': 'Nagaland'},
+  {'city': 'Aizawl', 'state': 'Mizoram'},
+  {'city': 'Leh', 'state': 'Ladakh'},
+  {'city': 'Puducherry', 'state': 'Puducherry'},
+];
 
 class OnboardingFlow extends StatefulWidget {
   final VoidCallback onComplete;
@@ -68,6 +168,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   bool _isCheckingUsername = false;
   Timer? _usernameDebounce;
 
+  // ── Page 5: Location ──────────────────────────────────────────────────────
+  LocationPermission _locationPermission = LocationPermission.denied;
+  bool _isCheckingLocation = false;
+  bool _isFetchingGpsCity = false;
+  String? _gpsCity;
+  String? _gpsState;
+  String? _manualCity;
+  String? _manualState;
+  final _citySearchController = TextEditingController();
+  List<Map<String, String>> _filteredCities = [];
+  bool _showManualSearch = false;
+
   // ─────────────────────────────────────────────────────────────────────────
 
   @override
@@ -81,6 +193,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _monthController = FixedExtentScrollController(initialItem: 0);
     _dayController = FixedExtentScrollController(initialItem: 0);
     _yearController = FixedExtentScrollController(initialItem: yearInitIdx);
+    _checkInitialLocationPermission();
   }
 
   @override
@@ -92,8 +205,46 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _monthController.dispose();
     _dayController.dispose();
     _yearController.dispose();
+    _citySearchController.dispose();
     _usernameDebounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkInitialLocationPermission() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (mounted) setState(() => _locationPermission = perm);
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        _fetchGpsCity();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchGpsCity() async {
+    if (mounted) setState(() => _isFetchingGpsCity = true);
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.low),
+      );
+      final placemarks = await placemarkFromCoordinates(
+          position.latitude, position.longitude);
+      if (mounted && placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        setState(() {
+          _gpsCity = p.locality?.isNotEmpty == true
+              ? p.locality
+              : p.subAdministrativeArea;
+          _gpsState = p.administrativeArea;
+          _isFetchingGpsCity = false;
+        });
+      } else if (mounted) {
+        setState(() => _isFetchingGpsCity = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isFetchingGpsCity = false);
+    }
   }
 
   Future<void> _animateToPage(int page) async {
@@ -162,7 +313,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       await Supabase.instance.client.rpc('delete_user');
     } catch (_) {}
     await Supabase.instance.client.auth.signOut();
-    // Auth listener in main.dart routes back to LoginScreen automatically
   }
 
   // ── Page 1 actions ───────────────────────────────────────────────────────
@@ -191,7 +341,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_selectedGender != null) _animateToPage(3);
   }
 
-  // ── Page 4 actions ───────────────────────────────────────────────────────
+  // ── Page 4 actions (username) ─────────────────────────────────────────────
 
   void _onUsernameChanged(String value) {
     _usernameDebounce?.cancel();
@@ -240,8 +390,67 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     });
   }
 
-  Future<void> _submitOnboarding() async {
+  void _continuePage4() {
     if (_usernameSuccess == null || _isCheckingUsername) return;
+    _animateToPage(4);
+  }
+
+  // ── Page 5 actions (location) ─────────────────────────────────────────────
+
+  bool get _locationPermissionGranted =>
+      _locationPermission == LocationPermission.always ||
+      _locationPermission == LocationPermission.whileInUse;
+
+  bool get _locationPermanentlyDenied =>
+      _locationPermission == LocationPermission.deniedForever;
+
+  Future<void> _requestLocationPermission() async {
+    setState(() => _isCheckingLocation = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (mounted) {
+        setState(() {
+          _locationPermission = perm;
+          _isCheckingLocation = false;
+          if (perm == LocationPermission.always ||
+              perm == LocationPermission.whileInUse) {
+            _showManualSearch = false;
+          } else {
+            _showManualSearch = true;
+          }
+        });
+        if (perm == LocationPermission.always ||
+            perm == LocationPermission.whileInUse) {
+          _fetchGpsCity();
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingLocation = false);
+    }
+  }
+
+  void _onCitySearchChanged(String value) {
+    final query = value.toLowerCase().trim();
+    setState(() {
+      _filteredCities = query.isEmpty
+          ? []
+          : kIndianCities
+              .where((c) =>
+                  c['city']!.toLowerCase().contains(query) ||
+                  c['state']!.toLowerCase().contains(query))
+              .take(10)
+              .toList();
+    });
+  }
+
+  bool get _canCreateAccount =>
+      _locationPermissionGranted || _manualCity != null;
+
+  Future<void> _submitOnboarding() async {
+    if (!_canCreateAccount) return;
     setState(() => _isLoading = true);
     try {
       final user = Supabase.instance.client.auth.currentUser!;
@@ -255,6 +464,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         'date_created': DateTime.now().toUtc().toIso8601String(),
         'age': _calculatedAge,
         'gender': _selectedGender,
+        'location_city': _locationPermissionGranted
+            ? (_gpsCity ?? '')
+            : (_manualCity ?? ''),
+        'location_state': _locationPermissionGranted
+            ? (_gpsState ?? '')
+            : (_manualState ?? ''),
+        'location_permission': _locationPermissionGranted,
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
@@ -266,7 +482,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         setState(() {
           _isLoading = false;
           _showCreateSuccess = false;
-          _usernameError = 'Failed to create profile. Please try again.';
         });
       }
     }
@@ -387,6 +602,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                             _buildDobPage(),
                             _buildGenderPage(),
                             _buildUsernamePage(),
+                            _buildLocationPage(),
                           ],
                         ),
                 ),
@@ -418,7 +634,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
           const Spacer(),
           Row(
-            children: List.generate(4, (i) {
+            children: List.generate(5, (i) {
               final isActive = i == _currentPage;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
@@ -519,7 +735,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             style: TextStyle(color: Colors.white54, fontSize: 14),
           ),
           const SizedBox(height: 32),
-          // Scroll picker
           Container(
             height: 200,
             decoration: BoxDecoration(
@@ -530,7 +745,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ),
             child: Stack(
               children: [
-                // Selection highlight bar
                 Center(
                   child: Container(
                     height: 44,
@@ -543,7 +757,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 ),
                 Row(
                   children: [
-                    // Month
                     Expanded(
                       flex: 3,
                       child: ListWheelScrollView.useDelegate(
@@ -580,7 +793,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         ),
                       ),
                     ),
-                    // Day
                     Expanded(
                       flex: 2,
                       child: ListWheelScrollView.useDelegate(
@@ -600,7 +812,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         ),
                       ),
                     ),
-                    // Year
                     Expanded(
                       flex: 2,
                       child: ListWheelScrollView.useDelegate(
@@ -645,7 +856,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ),
           ),
           const SizedBox(height: 16),
-          // Selected date chip
           Container(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -676,7 +886,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ),
           ),
           const SizedBox(height: 10),
-          // Age status
           Container(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -766,7 +975,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // ── Page 4: Username ──────────────────────────────────────────────────────
 
   Widget _buildUsernamePage() {
-    final canSubmit = _usernameSuccess != null && !_isCheckingUsername;
+    final canContinue = _usernameSuccess != null && !_isCheckingUsername;
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -838,11 +1047,369 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 style: const TextStyle(color: Colors.green, fontSize: 13)),
           ],
           const SizedBox(height: 40),
+          _buildContinueButton(canContinue ? _continuePage4 : null),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  // ── Page 5: Location ──────────────────────────────────────────────────────
+
+  Widget _buildLocationPage() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 24),
+
+          // Icon — changes based on permission status
+          Center(
+            child: _locationPermissionGranted
+                ? Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.location_on,
+                        color: Colors.green, size: 40),
+                  )
+                : _IconCircle(icon: Icons.location_on_outlined),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Title
+          Text(
+            _locationPermissionGranted
+                ? 'Location Access Granted'
+                : 'Enable Your Location',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 8),
+
+          // Subtitle
+          Text(
+            _locationPermissionGranted
+                ? 'Your news will be tailored to your region.'
+                : 'Enabling location will help us deliver\nbetter news to you.',
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── GRANTED state ────────────────────────────────────────────────
+          if (_locationPermissionGranted) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _isFetchingGpsCity
+                        ? const Text(
+                            'Detecting your city...',
+                            style: TextStyle(
+                                color: Colors.green, fontSize: 13, height: 1.4),
+                          )
+                        : Text(
+                            _gpsCity != null
+                                ? 'Location: $_gpsCity${_gpsState != null ? ', $_gpsState' : ''}'
+                                : 'Location access granted — we\'ll use your GPS to personalise your feed.',
+                            style: const TextStyle(
+                                color: Colors.green, fontSize: 13, height: 1.4),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── NOT GRANTED state ────────────────────────────────────────────
+          if (!_locationPermissionGranted) ...[
+            // Enable Location button
+            if (!_showManualSearch) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _isCheckingLocation ? null : _requestLocationPermission,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFC8936A),
+                    disabledBackgroundColor: const Color(0xFF3A2A1A),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: _isCheckingLocation
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location, color: Colors.white, size: 20),
+                  label: Text(
+                    _isCheckingLocation ? 'Requesting...' : 'Enable Location',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Permanently denied — open settings hint
+              if (_locationPermanentlyDenied)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline,
+                            color: Colors.orange, size: 16),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Location access was denied. Enable it in device Settings.',
+                            style: TextStyle(
+                                color: Colors.orange, fontSize: 12, height: 1.4),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Geolocator.openAppSettings(),
+                          style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(60, 28)),
+                          child: const Text('Settings',
+                              style: TextStyle(
+                                  color: Color(0xFFC8936A),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Set manually link
+              GestureDetector(
+                onTap: () => setState(() => _showManualSearch = true),
+                child: const Text(
+                  'Set location manually instead',
+                  style: TextStyle(
+                    color: Color(0xFFC8936A),
+                    fontSize: 14,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Color(0xFFC8936A),
+                  ),
+                ),
+              ),
+            ],
+
+            // ── Manual search ──────────────────────────────────────────────
+            if (_showManualSearch) ...[
+              // If a city was already picked, show it
+              if (_manualCity != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A2A1A),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFC8936A).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on,
+                          color: Color(0xFFC8936A), size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _manualCity!,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              _manualState ?? '',
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _manualCity = null;
+                          _manualState = null;
+                          _citySearchController.clear();
+                          _filteredCities = [];
+                        }),
+                        child: const Icon(Icons.close,
+                            color: Colors.white38, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              // Search bar
+              TextField(
+                controller: _citySearchController,
+                onChanged: _onCitySearchChanged,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: 'Search city in India...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF111111),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+
+              // Results
+              if (_filteredCities.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06)),
+                  ),
+                  child: Column(
+                    children: _filteredCities.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final c = entry.value;
+                      return Column(
+                        children: [
+                          if (idx > 0)
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: Colors.white.withValues(alpha: 0.05),
+                              indent: 50,
+                            ),
+                          InkWell(
+                            borderRadius: idx == 0
+                                ? const BorderRadius.vertical(
+                                    top: Radius.circular(14))
+                                : idx == _filteredCities.length - 1
+                                    ? const BorderRadius.vertical(
+                                        bottom: Radius.circular(14))
+                                    : BorderRadius.zero,
+                            onTap: () {
+                              setState(() {
+                                _manualCity = c['city'];
+                                _manualState = c['state'];
+                                _citySearchController.text =
+                                    '${c['city']}, ${c['state']}';
+                                _filteredCities = [];
+                              });
+                              FocusScope.of(context).unfocus();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.location_city,
+                                      color: Color(0xFFC8936A), size: 18),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        c['city']!,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                      Text(
+                                        c['state']!,
+                                        style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 10),
+
+              // Option to go back to GPS request
+              if (!_locationPermanentlyDenied)
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _showManualSearch = false;
+                    _citySearchController.clear();
+                    _filteredCities = [];
+                  }),
+                  child: const Text(
+                    'Use GPS location instead',
+                    style: TextStyle(
+                      color: Color(0xFFC8936A),
+                      fontSize: 14,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Color(0xFFC8936A),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+
+          const SizedBox(height: 32),
+
+          // ── Create Account button ─────────────────────────────────────────
           SizedBox(
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: canSubmit ? _submitOnboarding : null,
+              onPressed: _canCreateAccount ? _submitOnboarding : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFC8936A),
                 disabledBackgroundColor: const Color(0xFF3A2A1A),
@@ -863,6 +1430,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               ),
             ),
           ),
+
           const SizedBox(height: 32),
         ],
       ),

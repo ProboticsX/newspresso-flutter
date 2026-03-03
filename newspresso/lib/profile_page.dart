@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'audio_manager.dart';
+import 'onboarding_flow.dart' show kIndianCities;
 import 'plan_page.dart';
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
@@ -32,7 +35,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (userId == null) return;
       final result = await Supabase.instance.client
           .from('users')
-          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium')
+          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission')
           .eq('id', userId)
           .maybeSingle();
       if (mounted) {
@@ -205,6 +208,39 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ),
                                   );
                                   // Refresh in case profile was edited
+                                  _fetchUserProfile();
+                                },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── Location & Privacy ────────────────────────────
+                          _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF0A1A2E),
+                                icon: Icons.location_on_outlined,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'Location & Privacy',
+                                subtitle: _userProfile?['location_permission'] == true
+                                    ? 'GPS — location access granted'
+                                    : (_userProfile?['location_city'] != null &&
+                                            (_userProfile!['location_city'] as String).isNotEmpty)
+                                        ? _userProfile!['location_city'] as String
+                                        : 'Set your location',
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LocationPrivacyPage(
+                                        userProfile: _userProfile,
+                                      ),
+                                    ),
+                                  );
                                   _fetchUserProfile();
                                 },
                               ),
@@ -1592,6 +1628,591 @@ class _ScrollItem extends StatelessWidget {
           color: isSelected ? Colors.white : Colors.white38,
           fontSize: isSelected ? 17 : 15,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Location & Privacy Page ──────────────────────────────────────────────────
+
+class LocationPrivacyPage extends StatefulWidget {
+  final Map<String, dynamic>? userProfile;
+
+  const LocationPrivacyPage({super.key, required this.userProfile});
+
+  @override
+  State<LocationPrivacyPage> createState() => _LocationPrivacyPageState();
+}
+
+class _LocationPrivacyPageState extends State<LocationPrivacyPage> {
+  LocationPermission _permission = LocationPermission.denied;
+  bool _isCheckingPermission = false;
+  bool _isFetchingGpsCity = false;
+  bool _isSaving = false;
+
+  String? _gpsCity;
+  String? _gpsState;
+  String? _manualCity;
+  String? _manualState;
+  final _searchController = TextEditingController();
+  List<Map<String, String>> _filteredCities = [];
+  bool _showSearch = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _manualCity = widget.userProfile?['location_city']?.toString();
+    if (_manualCity != null && _manualCity!.isEmpty) _manualCity = null;
+    _manualState = widget.userProfile?['location_state']?.toString();
+    if (_manualState != null && _manualState!.isEmpty) _manualState = null;
+    _checkPermission();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkPermission() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (mounted) setState(() => _permission = perm);
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        _fetchGpsCity();
+      }
+    } catch (_) {}
+  }
+
+  bool get _granted =>
+      _permission == LocationPermission.always ||
+      _permission == LocationPermission.whileInUse;
+
+  bool get _permanentlyDenied =>
+      _permission == LocationPermission.deniedForever;
+
+  Future<void> _fetchGpsCity() async {
+    if (mounted) setState(() => _isFetchingGpsCity = true);
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.low),
+      );
+      final placemarks = await placemarkFromCoordinates(
+          position.latitude, position.longitude);
+      if (mounted && placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        setState(() {
+          _gpsCity = p.locality?.isNotEmpty == true
+              ? p.locality
+              : p.subAdministrativeArea;
+          _gpsState = p.administrativeArea;
+          _isFetchingGpsCity = false;
+        });
+      } else if (mounted) {
+        setState(() => _isFetchingGpsCity = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isFetchingGpsCity = false);
+    }
+  }
+
+  Future<void> _requestPermission() async {
+    setState(() => _isCheckingPermission = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (mounted) {
+        final granted = perm == LocationPermission.always ||
+            perm == LocationPermission.whileInUse;
+        setState(() {
+          _permission = perm;
+          _isCheckingPermission = false;
+          if (!granted) _showSearch = true;
+        });
+        if (granted) _fetchGpsCity();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingPermission = false);
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    final query = value.toLowerCase().trim();
+    setState(() {
+      _filteredCities = query.isEmpty
+          ? []
+          : kIndianCities
+              .where((c) =>
+                  c['city']!.toLowerCase().contains(query) ||
+                  c['state']!.toLowerCase().contains(query))
+              .take(10)
+              .toList();
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not authenticated');
+      await Supabase.instance.client.from('users').update({
+        'location_city':
+            _granted ? (_gpsCity ?? '') : (_manualCity ?? ''),
+        'location_state':
+            _granted ? (_gpsState ?? '') : (_manualState ?? ''),
+        'location_permission': _granted,
+      }).eq('id', userId);
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF6B4E38), Colors.black],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0.0, 0.35],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── App bar ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.chevron_left,
+                          color: Colors.white, size: 28),
+                    ),
+                    const Text(
+                      'Location & Privacy',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Save button
+                    _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFC8936A),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : TextButton(
+                            onPressed: (_granted || _manualCity != null)
+                                ? _save
+                                : null,
+                            child: Text(
+                              'Save',
+                              style: TextStyle(
+                                color: (_granted || _manualCity != null)
+                                    ? const Color(0xFFC8936A)
+                                    : Colors.white24,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Location Permission section ───────────────────────
+                      _SectionHeader(
+                        icon: Icons.gps_fixed,
+                        label: 'Location Permission',
+                      ),
+                      const SizedBox(height: 8),
+
+                      _InfoCard(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Status banner
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _granted
+                                        ? Colors.green.withValues(alpha: 0.08)
+                                        : Colors.orange.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: _granted
+                                          ? Colors.green.withValues(alpha: 0.3)
+                                          : Colors.orange.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _granted
+                                            ? Icons.check_circle
+                                            : Icons.location_off,
+                                        color: _granted
+                                            ? Colors.green
+                                            : Colors.orange,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        _granted
+                                            ? 'Location access granted'
+                                            : _permanentlyDenied
+                                                ? 'Location permanently denied'
+                                                : 'Location access not granted',
+                                        style: TextStyle(
+                                          color: _granted
+                                              ? Colors.green
+                                              : Colors.orange,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                // Action button
+                                if (!_granted) ...[
+                                  if (_permanentlyDenied) ...[
+                                    const Text(
+                                      'Location access was permanently denied. Open Settings to enable it.',
+                                      style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 13,
+                                          height: 1.5),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 46,
+                                      child: OutlinedButton.icon(
+                                        onPressed: () =>
+                                            Geolocator.openAppSettings(),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                              color: Color(0xFFC8936A)),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12)),
+                                        ),
+                                        icon: const Icon(Icons.settings_outlined,
+                                            color: Color(0xFFC8936A), size: 18),
+                                        label: const Text(
+                                          'Open Settings',
+                                          style: TextStyle(
+                                              color: Color(0xFFC8936A),
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 46,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isCheckingPermission
+                                            ? null
+                                            : _requestPermission,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFFC8936A),
+                                          disabledBackgroundColor:
+                                              const Color(0xFF3A2A1A),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12)),
+                                        ),
+                                        icon: _isCheckingPermission
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        color: Colors.white,
+                                                        strokeWidth: 2),
+                                              )
+                                            : const Icon(Icons.my_location,
+                                                color: Colors.white, size: 18),
+                                        label: Text(
+                                          _isCheckingPermission
+                                              ? 'Requesting...'
+                                              : 'Request Location Access',
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ] else ...[
+                                  _isFetchingGpsCity
+                                      ? const Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(
+                                                  color: Color(0xFFC8936A),
+                                                  strokeWidth: 2),
+                                            ),
+                                            SizedBox(width: 10),
+                                            Text(
+                                              'Detecting your city...',
+                                              style: TextStyle(
+                                                  color: Colors.white54,
+                                                  fontSize: 13),
+                                            ),
+                                          ],
+                                        )
+                                      : Text(
+                                          _gpsCity != null
+                                              ? 'Detected city: $_gpsCity${_gpsState != null ? ', $_gpsState' : ''}. Your feed will be personalised to your region.'
+                                              : 'Your news feed will automatically use your GPS location to surface relevant regional stories.',
+                                          style: const TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 13,
+                                              height: 1.5),
+                                        ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // ── Manual Location section (only when GPS not granted) ─
+                      if (!_granted) ...[
+                      const SizedBox(height: 24),
+
+                      _SectionHeader(
+                        icon: Icons.location_city_outlined,
+                        label: 'Set Location Manually',
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Choose a city in India since GPS access is not enabled.',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Current manual selection
+                      if (_manualCity != null && !_showSearch) ...[
+                        GestureDetector(
+                          onTap: () => setState(() {
+                            _showSearch = true;
+                            _searchController.clear();
+                            _filteredCities = [];
+                          }),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A2A1A),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: const Color(0xFFC8936A)
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on,
+                                    color: Color(0xFFC8936A), size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _manualCity!,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                      Text(
+                                        _manualState ?? '',
+                                        style: const TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.edit_outlined,
+                                    color: Colors.white38, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () => setState(() {
+                            _manualCity = null;
+                            _manualState = null;
+                          }),
+                          child: const Text(
+                            'Remove manual location',
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 13,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Colors.redAccent,
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        // Show search field
+                        TextField(
+                          controller: _searchController,
+                          onChanged: _onSearchChanged,
+                          onTap: () => setState(() => _showSearch = true),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 15),
+                          decoration: InputDecoration(
+                            hintText: 'Search city in India...',
+                            hintStyle:
+                                const TextStyle(color: Colors.white38),
+                            prefixIcon: const Icon(Icons.search,
+                                color: Colors.white38),
+                            filled: true,
+                            fillColor: const Color(0xFF111111),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+
+                        if (_filteredCities.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF111111),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.06)),
+                            ),
+                            child: Column(
+                              children:
+                                  _filteredCities.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final c = entry.value;
+                                return Column(
+                                  children: [
+                                    if (idx > 0)
+                                      Divider(
+                                        height: 1,
+                                        thickness: 1,
+                                        color: Colors.white.withValues(alpha: 0.05),
+                                        indent: 50,
+                                      ),
+                                    InkWell(
+                                      borderRadius: idx == 0
+                                          ? const BorderRadius.vertical(
+                                              top: Radius.circular(14))
+                                          : idx == _filteredCities.length - 1
+                                              ? const BorderRadius.vertical(
+                                                  bottom: Radius.circular(14))
+                                              : BorderRadius.zero,
+                                      onTap: () {
+                                        setState(() {
+                                          _manualCity = c['city'];
+                                          _manualState = c['state'];
+                                          _searchController.text =
+                                              '${c['city']}, ${c['state']}';
+                                          _filteredCities = [];
+                                          _showSearch = false;
+                                        });
+                                        FocusScope.of(context).unfocus();
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 12),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.location_city,
+                                                color: Color(0xFFC8936A),
+                                                size: 18),
+                                            const SizedBox(width: 12),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  c['city']!,
+                                                  style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w500),
+                                                ),
+                                                Text(
+                                                  c['state']!,
+                                                  style: const TextStyle(
+                                                      color: Colors.white38,
+                                                      fontSize: 12),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ],
+                      ],
+
+                      ], // end if (!_granted)
+
+                      const SizedBox(height: 80),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
