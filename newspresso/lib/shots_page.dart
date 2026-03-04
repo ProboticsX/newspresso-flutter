@@ -1,7 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
+
+// TODO: Swap to real IDs once AdMob account is approved
+// Android real: ca-app-pub-6690667089410073/XXXXXXXXXX
+// iOS real:     ca-app-pub-6690667089410073/XXXXXXXXXX
+const String _androidInterstitialAdUnitId =
+    'ca-app-pub-3940256099942544/1033173712';
+const String _iosInterstitialAdUnitId =
+    'ca-app-pub-3940256099942544/4411468910';
 
 class ShotsPage extends StatefulWidget {
   const ShotsPage({super.key});
@@ -24,12 +34,80 @@ class _ShotsPageState extends State<ShotsPage> {
   double _dragOffset = 0;
   bool _isDragging = false;
 
+  // Interstitial ad
+  InterstitialAd? _interstitialAd;
+  int _swipeCount = 0;
+  bool _adsEnabled = false;
+  static const int _adEvery = 3;
+
   static const int _stackSize = 3;
 
   @override
   void initState() {
     super.initState();
     _fetchShots();
+    _checkAndLoadAd();
+  }
+
+  @override
+  void dispose() {
+    _interstitialAd?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkAndLoadAd() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final result = await Supabase.instance.client
+            .from('users')
+            .select('is_premium')
+            .eq('id', userId)
+            .maybeSingle();
+        if (result?['is_premium'] == true) return; // premium: no ads
+      }
+    } catch (_) {
+      // fall through and load ad if check fails
+    }
+    _adsEnabled = true;
+    _loadInterstitialAd();
+  }
+
+  void _loadInterstitialAd() {
+    final adUnitId =
+        Platform.isAndroid ? _androidInterstitialAdUnitId : _iosInterstitialAdUnitId;
+    InterstitialAd.load(
+      adUnitId: adUnitId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) => _interstitialAd = ad,
+        onAdFailedToLoad: (_) => _interstitialAd = null,
+      ),
+    );
+  }
+
+  void _maybeShowInterstitial() {
+    if (!_adsEnabled) return;
+    _swipeCount++;
+    if (_swipeCount % _adEvery != 0) return;
+    if (_interstitialAd == null) {
+      _loadInterstitialAd();
+      return;
+    }
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd();
+      },
+    );
+    _interstitialAd!.show();
+    _interstitialAd = null;
   }
 
   Future<void> _fetchShots() async {
@@ -79,6 +157,7 @@ class _ShotsPageState extends State<ShotsPage> {
       _dragOffset = 0;
       _isDragging = false;
     });
+    _maybeShowInterstitial();
   }
 
   String _formatTimeAgo(dynamic ts) {

@@ -1,4 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+// TODO: Swap to real IDs once AdMob account is approved
+// Android real: ca-app-pub-6690667089410073/XXXXXXXXXX
+// iOS real:     ca-app-pub-6690667089410073/XXXXXXXXXX
+const String _androidAssistantBannerAdUnitId =
+    'ca-app-pub-3940256099942544/6300978111';
+const String _iosAssistantBannerAdUnitId =
+    'ca-app-pub-3940256099942544/2934735716';
 
 class NewsAssistantPage extends StatefulWidget {
   final String newsTitle;
@@ -19,17 +30,55 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
   final ScrollController _scrollController = ScrollController();
   final List<String> _messages = [];
 
+  BannerAd? _bannerAd;
+  bool _bannerAdLoaded = false;
+
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.prefillQuestion);
+    _checkAndLoadAd();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _bannerAd?.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkAndLoadAd() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final result = await Supabase.instance.client
+            .from('users')
+            .select('is_premium')
+            .eq('id', userId)
+            .maybeSingle();
+        if (result?['is_premium'] == true) return; // premium: no ad
+      }
+    } catch (_) {
+      // fall through and load ad if check fails
+    }
+    final adUnitId = Platform.isAndroid
+        ? _androidAssistantBannerAdUnitId
+        : _iosAssistantBannerAdUnitId;
+    _bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) setState(() => _bannerAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          _bannerAd = null;
+        },
+      ),
+    )..load();
   }
 
   void _sendMessage() {
@@ -167,6 +216,15 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
                         },
                       ),
               ),
+
+              // ── Banner ad ──
+              if (_bannerAdLoaded && _bannerAd != null)
+                Container(
+                  color: Colors.black,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
 
               // ── Input bar ──
               Container(
