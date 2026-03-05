@@ -35,8 +35,7 @@ class _PlanPageState extends State<PlanPage> {
       }
       if (mounted) setState(() => _isPremium = premium);
     } catch (_) {
-      // silently ignore; revert optimistic update
-      if (mounted) setState(() => _isPremium = widget.isPremium);
+      if (mounted) setState(() => _isPremium = !premium); // revert
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }

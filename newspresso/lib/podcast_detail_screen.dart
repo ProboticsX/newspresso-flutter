@@ -1,4 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'audio_manager.dart';
 import 'sources_modal.dart';
 import 'news_assistant_page.dart';
@@ -13,6 +17,54 @@ class PodcastDetailScreen extends StatefulWidget {
 }
 
 class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
+  BannerAd? _bannerAd;
+  bool _bannerAdLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBannerAdIfFree();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBannerAdIfFree() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final result = await Supabase.instance.client
+            .from('users')
+            .select('is_premium')
+            .eq('id', userId)
+            .maybeSingle();
+        if (result?['is_premium'] == true) return; // premium: no ad
+      }
+    } catch (_) {
+      // fall through and load ad if check fails
+    }
+    final adUnitId = Platform.isAndroid
+        ? (dotenv.env['ADMOB_ANDROID_PODCAST_BANNER'] ?? '')
+        : (dotenv.env['ADMOB_IOS_PODCAST_BANNER'] ?? '');
+    _bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) setState(() => _bannerAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          _bannerAd = null;
+        },
+      ),
+    )..load();
+  }
+
   // Format seconds to mm:ss
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -596,6 +648,15 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                   ),
                 ),
               ),
+
+              // ── Banner ad (free plan only) ──
+              if (_bannerAdLoaded && _bannerAd != null)
+                Container(
+                  color: Colors.black,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
             ],
           ),
         ),

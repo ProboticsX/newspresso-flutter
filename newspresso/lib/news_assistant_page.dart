@@ -1,15 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// TODO: Swap to real IDs once AdMob account is approved
-// Android real: ca-app-pub-6690667089410073/XXXXXXXXXX
-// iOS real:     ca-app-pub-6690667089410073/XXXXXXXXXX
-const String _androidAssistantBannerAdUnitId =
-    'ca-app-pub-3940256099942544/6300978111';
-const String _iosAssistantBannerAdUnitId =
-    'ca-app-pub-3940256099942544/2934735716';
 
 class NewsAssistantPage extends StatefulWidget {
   final String newsTitle;
@@ -32,12 +26,15 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
 
   BannerAd? _bannerAd;
   bool _bannerAdLoaded = false;
+  RewardedInterstitialAd? _rewardedAd;
+  bool _isPremium = false;
+  int? _questionsRemaining; // null while loading
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.prefillQuestion);
-    _checkAndLoadAd();
+    _loadUserData();
   }
 
   @override
@@ -45,26 +42,41 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
     _controller.dispose();
     _scrollController.dispose();
     _bannerAd?.dispose();
+    _rewardedAd?.dispose();
     super.dispose();
   }
 
-  Future<void> _checkAndLoadAd() async {
+  Future<void> _loadUserData() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId != null) {
         final result = await Supabase.instance.client
             .from('users')
-            .select('is_premium')
+            .select('is_premium, newspresso_assistant_limit')
             .eq('id', userId)
             .maybeSingle();
-        if (result?['is_premium'] == true) return; // premium: no ad
+        final premium = result?['is_premium'] == true;
+        final limit = premium ? null : (result?['newspresso_assistant_limit'] as int? ?? 0);
+        if (mounted) {
+          setState(() {
+            _isPremium = premium;
+            _questionsRemaining = limit;
+          });
+        }
+        if (premium) return; // premium: no ads
       }
     } catch (_) {
       // fall through and load ad if check fails
+      if (mounted) setState(() => _questionsRemaining = 0);
     }
+    _loadBannerAd();
+    _loadRewardedAd();
+  }
+
+  void _loadBannerAd() {
     final adUnitId = Platform.isAndroid
-        ? _androidAssistantBannerAdUnitId
-        : _iosAssistantBannerAdUnitId;
+        ? (dotenv.env['ADMOB_ANDROID_ASSISTANT_BANNER'] ?? '')
+        : (dotenv.env['ADMOB_IOS_ASSISTANT_BANNER'] ?? '');
     _bannerAd = BannerAd(
       adUnitId: adUnitId,
       size: AdSize.banner,
@@ -81,13 +93,76 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
     )..load();
   }
 
-  void _sendMessage() {
+  void _loadRewardedAd() {
+    final adUnitId = Platform.isAndroid
+        ? (dotenv.env['ADMOB_ANDROID_ASSISTANT_REWARDED'] ?? '')
+        : (dotenv.env['ADMOB_IOS_ASSISTANT_REWARDED'] ?? '');
+    RewardedInterstitialAd.load(
+      adUnitId: adUnitId,
+      request: const AdRequest(),
+      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          if (mounted) setState(() => _rewardedAd = ad);
+        },
+        onAdFailedToLoad: (_) {},
+      ),
+    );
+  }
+
+  Future<void> _watchRewardedAd() async {
+    if (_rewardedAd == null) return;
+    bool rewardEarned = false;
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) async {
+        ad.dispose();
+        if (mounted) setState(() => _rewardedAd = null);
+        _loadRewardedAd();
+        if (rewardEarned) {
+          const newLimit = 3;
+          if (mounted) setState(() => _questionsRemaining = newLimit);
+          final userId = Supabase.instance.client.auth.currentUser?.id;
+          if (userId != null) {
+            await Supabase.instance.client
+                .from('users')
+                .update({'newspresso_assistant_limit': newLimit})
+                .eq('id', userId);
+          }
+        }
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        if (mounted) setState(() => _rewardedAd = null);
+        _loadRewardedAd();
+      },
+    );
+    await _rewardedAd!.show(
+      onUserEarnedReward: (_, reward) => rewardEarned = true,
+    );
+  }
+
+  bool get _canSend =>
+      _isPremium || (_questionsRemaining != null && _questionsRemaining! > 0);
+
+  Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || !_canSend) return;
+    final newLimit = (!_isPremium && _questionsRemaining != null)
+        ? _questionsRemaining! - 1
+        : _questionsRemaining;
     setState(() {
       _messages.add(text);
       _controller.clear();
+      _questionsRemaining = newLimit;
     });
+    if (!_isPremium) {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        await Supabase.instance.client
+            .from('users')
+            .update({'newspresso_assistant_limit': newLimit})
+            .eq('id', userId);
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -157,6 +232,32 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
                         ),
                       ),
                     ),
+                    if (!_isPremium && _questionsRemaining != null) ...[
+                      const SizedBox(width: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.help_outline_rounded,
+                            size: 16,
+                            color: _questionsRemaining! > 0
+                                ? Colors.white60
+                                : Colors.red.shade400,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_questionsRemaining!}',
+                            style: TextStyle(
+                              color: _questionsRemaining! > 0
+                                  ? Colors.white60
+                                  : Colors.red.shade400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -217,6 +318,56 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
                       ),
               ),
 
+              // ── Watch ad button (shown when free user has 0 questions left) ──
+              // Uses Visibility (not `if`) so the slot stays in the Column and
+              // the banner AdWidget below never shifts index — prevents the
+              // "AdWidget already in widget tree" error on rebuild.
+              Visibility(
+                visible: !_isPremium && _questionsRemaining == 0,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                  color: Colors.black.withValues(alpha: 0.4),
+                  child: GestureDetector(
+                    onTap: _rewardedAd != null ? _watchRewardedAd : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _rewardedAd != null
+                            ? const Color(0xFFC8936A)
+                            : Colors.grey.shade800,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.play_circle_outline,
+                            color: _rewardedAd != null
+                                ? Colors.white
+                                : Colors.white38,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _rewardedAd != null
+                                ? 'Watch an ad for 3 more questions'
+                                : 'Loading ad…',
+                            style: TextStyle(
+                              color: _rewardedAd != null
+                                  ? Colors.white
+                                  : Colors.white38,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
               // ── Banner ad ──
               if (_bannerAdLoaded && _bannerAd != null)
                 Container(
@@ -230,9 +381,9 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
+                  color: Colors.black.withValues(alpha: 0.4),
                   border: Border(
-                    top: BorderSide(color: Colors.white.withOpacity(0.08)),
+                    top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
                   ),
                 ),
                 child: Row(
@@ -247,7 +398,7 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
                           color: const Color(0xFF1A1A1A),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withValues(alpha: 0.08),
                           ),
                         ),
                         child: TextField(
@@ -274,17 +425,19 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
                     ),
                     const SizedBox(width: 10),
                     GestureDetector(
-                      onTap: _sendMessage,
+                      onTap: _canSend ? _sendMessage : null,
                       child: Container(
                         width: 44,
                         height: 44,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFFC8936A),
+                          color: _canSend
+                              ? const Color(0xFFC8936A)
+                              : Colors.grey.shade800,
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.arrow_upward_rounded,
-                          color: Colors.white,
+                          color: _canSend ? Colors.white : Colors.white30,
                           size: 22,
                         ),
                       ),

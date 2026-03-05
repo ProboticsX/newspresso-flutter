@@ -1,15 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
-
-// TODO: Swap back to real IDs once AdMob account is approved
-// Android real: ca-app-pub-6690667089410073/1778742522
-// iOS real:     ca-app-pub-6690667089410073/4164790845
-const String _androidBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
-const String _iosBannerAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
 
 class NewsDetailPage extends StatefulWidget {
   final String contentTitle;
@@ -64,7 +59,9 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
 
   void _loadBannerAd() {
     final adUnitId =
-        Platform.isAndroid ? _androidBannerAdUnitId : _iosBannerAdUnitId;
+        Platform.isAndroid
+            ? (dotenv.env['ADMOB_ANDROID_NEWS_DETAIL_BANNER'] ?? '')
+            : (dotenv.env['ADMOB_IOS_NEWS_DETAIL_BANNER'] ?? '');
 
     _bannerAd = BannerAd(
       adUnitId: adUnitId,

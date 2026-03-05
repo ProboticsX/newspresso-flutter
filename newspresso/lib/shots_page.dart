@@ -1,17 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
-
-// TODO: Swap to real IDs once AdMob account is approved
-// Android real: ca-app-pub-6690667089410073/XXXXXXXXXX
-// iOS real:     ca-app-pub-6690667089410073/XXXXXXXXXX
-const String _androidInterstitialAdUnitId =
-    'ca-app-pub-3940256099942544/1033173712';
-const String _iosInterstitialAdUnitId =
-    'ca-app-pub-3940256099942544/4411468910';
 
 class ShotsPage extends StatefulWidget {
   const ShotsPage({super.key});
@@ -75,7 +68,9 @@ class _ShotsPageState extends State<ShotsPage> {
 
   void _loadInterstitialAd() {
     final adUnitId =
-        Platform.isAndroid ? _androidInterstitialAdUnitId : _iosInterstitialAdUnitId;
+        Platform.isAndroid
+            ? (dotenv.env['ADMOB_ANDROID_SHOTS_INTERSTITIAL'] ?? '')
+            : (dotenv.env['ADMOB_IOS_SHOTS_INTERSTITIAL'] ?? '');
     InterstitialAd.load(
       adUnitId: adUnitId,
       request: const AdRequest(),

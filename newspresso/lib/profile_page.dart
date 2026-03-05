@@ -184,7 +184,52 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 10),
+
+                          // ── Plan badge ──────────────────────────────────
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: _isPremium
+                                  ? const Color(0xFF2A1A0A)
+                                  : Colors.white.withValues(alpha: 0.07),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _isPremium
+                                    ? const Color(0xFFC8936A)
+                                    : Colors.white24,
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _isPremium
+                                      ? Icons.workspace_premium
+                                      : Icons.star_border,
+                                  size: 14,
+                                  color: _isPremium
+                                      ? const Color(0xFFC8936A)
+                                      : Colors.white54,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  _isPremium ? 'Newspresso Black' : 'Free Plan',
+                                  style: TextStyle(
+                                    color: _isPremium
+                                        ? const Color(0xFFC8936A)
+                                        : Colors.white54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 28),
 
                           // ── Account Settings (navigates to detail page) ──
                           _InfoCard(
@@ -263,16 +308,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                 labelColor: Colors.white,
                                 showChevron: true,
                                 onTap: () async {
-                                  final result = await Navigator.push<bool>(
+                                  await Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) =>
                                           PlanPage(isPremium: _isPremium),
                                     ),
                                   );
-                                  if (result != null && mounted) {
-                                    setState(() => _isPremium = result);
-                                  }
+                                  _fetchUserProfile();
                                 },
                               ),
                             ],

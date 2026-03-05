@@ -471,6 +471,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ? (_gpsState ?? '')
             : (_manualState ?? ''),
         'location_permission': _locationPermissionGranted,
+        'is_premium': false,
+        'newspresso_assistant_limit': 3,
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
