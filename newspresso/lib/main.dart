@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:audio_service/audio_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'shots_page.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
@@ -32,6 +37,7 @@ void main() async {
   MobileAds.instance.updateRequestConfiguration(
     RequestConfiguration(testDeviceIds: ['107d93066e57249258efb7fb01151b4d']),
   );
+  await AudioManager.instance.init();
 
   runApp(const MainApp());
 }
@@ -57,6 +63,12 @@ class _MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
+
+    // Request notification permission on Android 13+ (POST_NOTIFICATIONS).
+    // Must be called here (not in main) — the Activity must be attached first.
+    if (Platform.isAndroid) {
+      Permission.notification.request();
+    }
 
     // Minimum splash display time
     Future.delayed(const Duration(milliseconds: 2200), () {
@@ -167,8 +179,10 @@ class _MainShell extends StatefulWidget {
   State<_MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<_MainShell> {
+class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  StreamSubscription<bool>? _notificationClickSub;
+  bool _wentToBackground = false;
 
   static const _tabs = [
     ShotsPage(),
@@ -176,6 +190,50 @@ class _MainShellState extends State<_MainShell> {
     PodcastsPage(),
     ProfilePage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Android: fires when the media notification is tapped
+    _notificationClickSub = AudioService.notificationClicked.listen((clicked) {
+      if (!clicked || !mounted) return;
+      _navigateToPodcast();
+    });
+  }
+
+  // iOS: fires when the app is brought back to the foreground (e.g. tapping
+  // the Now Playing widget on the lock screen or Control Center).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _wentToBackground = true;
+    } else if (state == AppLifecycleState.resumed && _wentToBackground) {
+      _wentToBackground = false;
+      if (Platform.isIOS) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToPodcast());
+      }
+    }
+  }
+
+  void _navigateToPodcast() {
+    final podcast = AudioManager.instance.currentPodcast;
+    if (podcast != null && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PodcastDetailScreen(podcast: podcast),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationClickSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
