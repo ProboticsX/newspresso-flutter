@@ -23,6 +23,8 @@ class _ShotsPageState extends State<ShotsPage> {
   bool _isLoading = true;
   String? _error;
   Set<String> _favoritedIds = {};
+  List<Map<String, dynamic>> _dismissedHistory = [];
+  Set<String> _dismissedIds = {};
 
   // Drag state
   double _dragOffset = 0;
@@ -118,6 +120,7 @@ class _ShotsPageState extends State<ShotsPage> {
 
       final items = (res as List<dynamic>)
           .map((e) => e as Map<String, dynamic>)
+          .where((item) => !_dismissedIds.contains(item['id']?.toString() ?? ''))
           .toList();
 
       setState(() {
@@ -141,13 +144,28 @@ class _ShotsPageState extends State<ShotsPage> {
     try {
       final result = await _supabase
           .from('users')
-          .select('news_items_favorited')
+          .select('news_items_favorited, news_items_dismissed')
           .eq('id', userId)
           .maybeSingle();
       final raw = result?['news_items_favorited'];
-      if (raw is List) {
-        setState(() => _favoritedIds = raw.map((e) => e.toString()).toSet());
-      }
+      final rawDismissed = result?['news_items_dismissed'];
+      setState(() {
+        if (raw is List) {
+          _favoritedIds = raw.map((e) => e.toString()).toSet();
+        }
+        if (rawDismissed is List) {
+          _dismissedIds = rawDismissed.map((e) => e.toString()).toSet();
+          // Re-filter _allItems if shots already loaded
+          if (_allItems.isNotEmpty) {
+            _allItems = _allItems
+                .where((item) => !_dismissedIds.contains(item['id']?.toString() ?? ''))
+                .toList();
+            _stack.clear();
+            _nextIndex = 0;
+            _fillStack();
+          }
+        }
+      });
     } catch (_) {}
   }
 
@@ -182,13 +200,51 @@ class _ShotsPageState extends State<ShotsPage> {
   void _dismissTop() {
     setState(() {
       if (_stack.isNotEmpty) {
-        _stack.removeLast(); // remove the front/top card
+        final dismissed = _stack.last;
+        _dismissedHistory.add(dismissed);
+        final id = dismissed['id']?.toString() ?? '';
+        if (id.isNotEmpty) {
+          _dismissedIds.add(id);
+          _persistDismissed();
+        }
+        _stack.removeLast();
         _fillStack();
       }
       _dragOffset = 0;
       _isDragging = false;
     });
     _maybeShowInterstitial();
+  }
+
+  void _undoLastDismiss() {
+    if (_dismissedHistory.isEmpty) return;
+    setState(() {
+      final item = _dismissedHistory.removeLast();
+      final id = item['id']?.toString() ?? '';
+      if (id.isNotEmpty) {
+        _dismissedIds.remove(id);
+        _persistDismissed();
+      }
+      // If stack is full, push the deepest backing card back to the queue
+      if (_stack.length >= _stackSize) {
+        _stack.removeAt(0);
+        _nextIndex--;
+      }
+      _stack.add(item); // restored card becomes the new front
+      _dragOffset = 0;
+      _isDragging = false;
+    });
+  }
+
+  Future<void> _persistDismissed() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await _supabase
+          .from('users')
+          .update({'news_items_dismissed': _dismissedIds.toList()})
+          .eq('id', userId);
+    } catch (_) {}
   }
 
   String _formatTimeAgo(dynamic ts) {
@@ -262,9 +318,22 @@ class _ShotsPageState extends State<ShotsPage> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Text(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.undo_rounded,
+                        color: _dismissedHistory.isNotEmpty
+                            ? Colors.white
+                            : Colors.white24,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: _dismissedHistory.isNotEmpty
+                          ? _undoLastDismiss
+                          : null,
+                    ),
+                    const Text(
                       'Newspresso',
                       style: TextStyle(
                         color: Colors.white,
@@ -273,6 +342,7 @@ class _ShotsPageState extends State<ShotsPage> {
                         letterSpacing: 0.2,
                       ),
                     ),
+                    const SizedBox(width: 48),
                   ],
                 ),
               ),
