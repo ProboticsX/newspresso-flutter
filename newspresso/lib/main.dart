@@ -184,16 +184,18 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
   StreamSubscription<bool>? _notificationClickSub;
   bool _wentToBackground = false;
 
-  static const _tabs = [
-    ShotsPage(),
-    NewsListPage(),
-    PodcastsPage(),
-    ProfilePage(),
-  ];
+  final _podcastsRefresh = ValueNotifier<int>(0);
+  late final List<Widget> _tabs;
 
   @override
   void initState() {
     super.initState();
+    _tabs = [
+      const ShotsPage(),
+      const NewsListPage(),
+      PodcastsPage(refreshSignal: _podcastsRefresh),
+      const ProfilePage(),
+    ];
     WidgetsBinding.instance.addObserver(this);
 
     // Android: fires when the media notification is tapped
@@ -232,6 +234,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _notificationClickSub?.cancel();
+    _podcastsRefresh.dispose();
     super.dispose();
   }
 
@@ -415,7 +418,10 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
                         activeIcon: Icons.play_circle,
                         label: 'Podcasts',
                         isSelected: _selectedIndex == 2,
-                        onTap: () => setState(() => _selectedIndex = 2),
+                        onTap: () {
+                          _podcastsRefresh.value++;
+                          setState(() => _selectedIndex = 2);
+                        },
                       ),
                       _NavItem(
                         icon: Icons.person_outline,

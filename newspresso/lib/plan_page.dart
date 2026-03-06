@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'audio_manager.dart';
 
 class PlanPage extends StatefulWidget {
   final bool isPremium;
@@ -33,6 +34,7 @@ class _PlanPageState extends State<PlanPage> {
             .update({'is_premium': premium})
             .eq('id', userId);
       }
+      await AudioManager.instance.stop();
       if (mounted) setState(() => _isPremium = premium);
     } catch (_) {
       if (mounted) setState(() => _isPremium = !premium); // revert

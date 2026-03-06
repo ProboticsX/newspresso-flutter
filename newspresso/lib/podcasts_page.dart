@@ -4,7 +4,9 @@ import 'sources_modal.dart';
 import 'audio_manager.dart';
 
 class PodcastsPage extends StatefulWidget {
-  const PodcastsPage({super.key});
+  final ValueNotifier<int>? refreshSignal;
+
+  const PodcastsPage({super.key, this.refreshSignal});
 
   @override
   State<PodcastsPage> createState() => _PodcastsPageState();
@@ -14,6 +16,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
   final _supabase = Supabase.instance.client;
   List<dynamic> _podcasts = [];
   Set<String> _unlockedIds = {};
+  int? _podcastLimit; // null = premium (unlimited)
   bool _isLoading = true;
   String? _error;
 
@@ -21,23 +24,40 @@ class _PodcastsPageState extends State<PodcastsPage> {
   void initState() {
     super.initState();
     _loadData();
+    widget.refreshSignal?.addListener(_onRefresh);
   }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_onRefresh);
+    super.dispose();
+  }
+
+  void _onRefresh() => _loadData();
 
   Future<void> _loadData() async {
-    await Future.wait([_fetchPodcasts(), _fetchUnlockedPodcasts()]);
-  }
-
-  Future<void> _fetchPodcasts() async {
     try {
-      final res = await _supabase
+      // Fetch both in parallel, then apply a single setState
+      final podcastsFuture = _supabase
           .from('podcasts')
           .select(
             'id, podcast_title, podcast_summary, podcast_url_to_image, public_url, timestamp, podcast_sources, podcast_questions',
           )
           .order('timestamp', ascending: false);
+      final userFuture = _fetchUserData();
+
+      final podcasts = await podcastsFuture;
+      final userData = await userFuture;
+
+      final raw = userData?['podcasts_unlocked'];
+      final isPremium = userData?['is_premium'] == true;
 
       setState(() {
-        _podcasts = res as List<dynamic>;
+        _podcasts = podcasts as List<dynamic>;
+        if (raw is List) {
+          _unlockedIds = raw.map((e) => e.toString()).toSet();
+        }
+        _podcastLimit = isPremium ? null : (userData?['podcast_limit'] as int? ?? 3);
         _isLoading = false;
       });
     } catch (e) {
@@ -48,22 +68,14 @@ class _PodcastsPageState extends State<PodcastsPage> {
     }
   }
 
-  Future<void> _fetchUnlockedPodcasts() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
-      final result = await _supabase
-          .from('users')
-          .select('podcasts_unlocked')
-          .eq('id', userId)
-          .maybeSingle();
-      final raw = result?['podcasts_unlocked'];
-      if (raw is List) {
-        setState(() {
-          _unlockedIds = raw.map((e) => e.toString()).toSet();
-        });
-      }
-    } catch (_) {}
+  Future<Map<String, dynamic>?> _fetchUserData() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+    return await _supabase
+        .from('users')
+        .select('podcasts_unlocked, podcast_limit, is_premium')
+        .eq('id', userId)
+        .maybeSingle();
   }
 
   Future<void> _unlockPodcast(String podcastId, PodcastItem item) async {
@@ -71,20 +83,31 @@ class _PodcastsPageState extends State<PodcastsPage> {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
       final updated = [..._unlockedIds, podcastId];
-      await _supabase
-          .from('users')
-          .update({'podcasts_unlocked': updated})
-          .eq('id', userId);
+      final newLimit = _podcastLimit != null ? _podcastLimit! - 1 : null;
+      final updateData = <String, dynamic>{'podcasts_unlocked': updated};
+      if (newLimit != null) updateData['podcast_limit'] = newLimit;
+      await _supabase.from('users').update(updateData).eq('id', userId);
       setState(() {
         _unlockedIds = updated.toSet();
+        if (newLimit != null) _podcastLimit = newLimit;
       });
       AudioManager.instance.playPodcast(item);
     } catch (_) {}
   }
 
   void _onPodcastTap(String podcastId, PodcastItem item) {
+    // Premium: play directly, no unlock needed
+    if (_podcastLimit == null) {
+      AudioManager.instance.playPodcast(item);
+      return;
+    }
     if (_unlockedIds.contains(podcastId)) {
       AudioManager.instance.playPodcast(item);
+      return;
+    }
+    // Block if limit reached (non-premium only)
+    if (_podcastLimit! <= 0) {
+      _showUpgradeDialog();
       return;
     }
     showDialog(
@@ -97,7 +120,9 @@ class _PodcastsPageState extends State<PodcastsPage> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'Unlock "${item.title}" to start listening?',
+          _podcastLimit != null
+              ? 'Unlock "${item.title}" to start listening?\n\n$_podcastLimit unlock${_podcastLimit == 1 ? '' : 's'} remaining.'
+              : 'Unlock "${item.title}" to start listening?',
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -121,6 +146,61 @@ class _PodcastsPageState extends State<PodcastsPage> {
         ],
       ),
     );
+  }
+
+  void _showUpgradeDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Unlock Limit Reached',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          "You've used all your free podcast unlocks.\n\nUpgrade to Premium to unlock unlimited podcasts.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Maybe Later',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _upgradeToPremium();
+            },
+            child: const Text(
+              'Go Premium',
+              style: TextStyle(
+                color: Color(0xFFC8936A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _upgradeToPremium() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+      await _supabase
+          .from('users')
+          .update({'is_premium': true})
+          .eq('id', userId);
+      await AudioManager.instance.stop();
+      setState(() {
+        _podcastLimit = null; // null = premium (unlimited)
+      });
+    } catch (_) {}
   }
 
   String _formatTimeAgo(String? dateString) {
@@ -178,7 +258,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
             sourcesList = sourcesField['items'] as List<dynamic>? ?? [];
             try {
               sourcesList = List.from(sourcesField as Iterable);
-            } catch (e) {}
+            } catch (_) {}
           }
 
           List<dynamic> questionsList = [];
@@ -189,15 +269,16 @@ class _PodcastsPageState extends State<PodcastsPage> {
             questionsList = qField['items'] as List<dynamic>? ?? [];
             try {
               questionsList = List.from(qField as Iterable);
-            } catch (e) {}
+            } catch (_) {}
           } else if (qField != null) {
             try {
               questionsList = List.from(qField as Iterable);
-            } catch (e) {}
+            } catch (_) {}
           }
 
           final podcastId = item['id']?.toString() ?? '';
-          final isUnlocked = _unlockedIds.contains(podcastId);
+          // Premium users have all podcasts unlocked
+          final isUnlocked = _podcastLimit == null || _unlockedIds.contains(podcastId);
 
           final podcastItem = PodcastItem(
             title: title,
@@ -240,7 +321,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                 height: 220,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   height: 220,
                                   color: Colors.grey[800],
                                   child: const Icon(
@@ -257,8 +338,8 @@ class _PodcastsPageState extends State<PodcastsPage> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                Colors.black.withOpacity(0.0),
-                                Colors.black.withOpacity(0.9),
+                                Colors.black.withValues(alpha: 0.0),
+                                Colors.black.withValues(alpha: 0.9),
                               ],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
@@ -549,17 +630,41 @@ class _PodcastsPageState extends State<PodcastsPage> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Text(
-                      'Newspresso',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
+                  children: [
+                    // Spacer equal to badge width to keep title centered
+                    SizedBox(width: _podcastLimit != null ? 48 : 0),
+                    const Expanded(
+                      child: Text(
+                        'Newspresso',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                     ),
+                    if (_podcastLimit != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.headphones,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$_podcastLimit',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),

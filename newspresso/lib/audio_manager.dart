@@ -30,7 +30,9 @@ class PodcastAudioHandler extends BaseAudioHandler with SeekHandler {
 
   PodcastAudioHandler() {
     _configureAudioSession();
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
+    _player.playbackEventStream.listen((event) {
+      playbackState.add(_transformEvent(event));
+    });
 
     _player.durationStream.listen((duration) {
       final current = mediaItem.value;

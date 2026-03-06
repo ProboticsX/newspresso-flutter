@@ -473,6 +473,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         'location_permission': _locationPermissionGranted,
         'is_premium': false,
         'newspresso_assistant_limit': 3,
+        'podcast_limit': 3,
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
