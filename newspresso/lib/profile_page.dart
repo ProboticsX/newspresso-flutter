@@ -6,7 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'audio_manager.dart';
 import 'onboarding_flow.dart' show kIndianCities;
+import 'package:url_launcher/url_launcher.dart';
 import 'plan_page.dart';
+import 'favorites_page.dart';
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
 
@@ -316,6 +318,55 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ),
                                   );
                                   _fetchUserProfile();
+                                },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── View Favorites ────────────────────────────────
+                          _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF2A0A0A),
+                                icon: Icons.favorite_border,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'View Favorites',
+                                subtitle: 'News items you\'ve saved',
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const FavoritesPage(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── Contact Us ────────────────────────────────────
+                          _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF0A1A2A),
+                                icon: Icons.mail_outline,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'Contact Us',
+                                subtitle: 'newspresso.org',
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () async {
+                                  final uri = Uri.parse(
+                                    'https://www.newspresso.org',
+                                  );
+                                  await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.inAppBrowserView,
+                                  );
                                 },
                               ),
                             ],

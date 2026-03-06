@@ -500,7 +500,6 @@ class _NewsListPageState extends State<NewsListPage> {
   List<dynamic> _newsList = [];
   bool _isLoading = true;
   String? _error;
-
   @override
   void initState() {
     super.initState();
@@ -512,7 +511,7 @@ class _NewsListPageState extends State<NewsListPage> {
       final response = await supabase
           .from('newspresso_aggregated_news_in')
           .select(
-            'content_title, url_to_image, content_summary, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions',
           )
           .order('timestamp', ascending: false);
 
@@ -635,11 +634,14 @@ class _NewsListPageState extends State<NewsListPage> {
                         itemCount: _newsList.length,
                         itemBuilder: (context, index) {
                           final item = _newsList[index] as Map<String, dynamic>;
+                          final itemId = item['id']?.toString() ?? '';
                           final contentTitle =
                               item['content_title']?.toString() ?? 'No title';
                           final imageUrl = item['url_to_image']?.toString();
                           final contentSummary =
                               item['content_summary']?.toString() ?? '';
+                          final contentDescription =
+                              item['content_description']?.toString();
                           final timestampField = item['timestamp'];
 
                           // Safely parse articles from Supabase format
@@ -701,10 +703,12 @@ class _NewsListPageState extends State<NewsListPage> {
                                     contentTitle: contentTitle,
                                     imageUrl: imageUrl,
                                     contentSummary: contentSummary,
+                                    contentDescription: contentDescription,
                                     articlesList: articlesList,
                                     publishedText: publishedText,
                                     totalSources: totalSources,
                                     questionsList: questionsList,
+                                    newsItemId: itemId.isEmpty ? null : itemId,
                                   ),
                                 ),
                               );

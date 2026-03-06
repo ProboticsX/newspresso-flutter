@@ -22,6 +22,7 @@ class _ShotsPageState extends State<ShotsPage> {
   final List<Map<String, dynamic>> _stack = [];
   bool _isLoading = true;
   String? _error;
+  Set<String> _favoritedIds = {};
 
   // Drag state
   double _dragOffset = 0;
@@ -40,6 +41,7 @@ class _ShotsPageState extends State<ShotsPage> {
     super.initState();
     _fetchShots();
     _checkAndLoadAd();
+    _fetchFavorites();
   }
 
   @override
@@ -110,7 +112,7 @@ class _ShotsPageState extends State<ShotsPage> {
       final res = await _supabase
           .from('newspresso_aggregated_news_in')
           .select(
-            'content_title, url_to_image, content_description, content_summary, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions',
           )
           .order('timestamp', ascending: false);
 
@@ -131,6 +133,40 @@ class _ShotsPageState extends State<ShotsPage> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _fetchFavorites() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final result = await _supabase
+          .from('users')
+          .select('news_items_favorited')
+          .eq('id', userId)
+          .maybeSingle();
+      final raw = result?['news_items_favorited'];
+      if (raw is List) {
+        setState(() => _favoritedIds = raw.map((e) => e.toString()).toSet());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite(String itemId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    final newSet = Set<String>.from(_favoritedIds);
+    if (newSet.contains(itemId)) {
+      newSet.remove(itemId);
+    } else {
+      newSet.add(itemId);
+    }
+    setState(() => _favoritedIds = newSet);
+    try {
+      await _supabase
+          .from('users')
+          .update({'news_items_favorited': newSet.toList()})
+          .eq('id', userId);
+    } catch (_) {}
   }
 
   void _fillStack() {
@@ -278,6 +314,7 @@ class _ShotsPageState extends State<ShotsPage> {
     final topOffset = stackPosition * 18.0;
 
     // Extract data
+    final itemId = item['id']?.toString() ?? '';
     final title = item['content_title']?.toString() ?? '';
     final imageUrl = item['url_to_image']?.toString();
     final description = item['content_description']?.toString() ?? '';
@@ -305,10 +342,12 @@ class _ShotsPageState extends State<ShotsPage> {
             contentTitle: title,
             imageUrl: imageUrl,
             contentSummary: contentSummary,
+            contentDescription: description,
             articlesList: articlesList,
             publishedText: publishedText,
             totalSources: articlesList.length,
             questionsList: questionsList,
+            newsItemId: itemId.isEmpty ? null : itemId,
           ),
         ),
       );
@@ -329,6 +368,8 @@ class _ShotsPageState extends State<ShotsPage> {
           screenH: screenH,
           screenW: screenW,
           onTap: navigateToDetail,
+          isFavorited: _favoritedIds.contains(itemId),
+          onFavorite: itemId.isEmpty ? null : () => _toggleFavorite(itemId),
         ),
       ),
     );
@@ -394,6 +435,8 @@ class _ShotCard extends StatelessWidget {
   final double screenH;
   final double screenW;
   final VoidCallback? onTap;
+  final bool isFavorited;
+  final VoidCallback? onFavorite;
 
   const _ShotCard({
     required this.title,
@@ -406,6 +449,8 @@ class _ShotCard extends StatelessWidget {
     required this.screenH,
     required this.screenW,
     this.onTap,
+    this.isFavorited = false,
+    this.onFavorite,
   });
 
   @override

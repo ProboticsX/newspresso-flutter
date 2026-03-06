@@ -14,6 +14,8 @@ class NewsDetailPage extends StatefulWidget {
   final String publishedText;
   final int totalSources;
   final List<String> questionsList;
+  final String? contentDescription;
+  final String? newsItemId;
 
   const NewsDetailPage({
     super.key,
@@ -24,6 +26,8 @@ class NewsDetailPage extends StatefulWidget {
     required this.publishedText,
     required this.totalSources,
     this.questionsList = const [],
+    this.contentDescription,
+    this.newsItemId,
   });
 
   @override
@@ -33,11 +37,63 @@ class NewsDetailPage extends StatefulWidget {
 class _NewsDetailPageState extends State<NewsDetailPage> {
   BannerAd? _bannerAd;
   bool _bannerAdLoaded = false;
+  int _selectedMode = 0; // 0 = Deep Dive, 1 = Explain under 100
+  bool _isFavorited = false;
 
   @override
   void initState() {
     super.initState();
     _checkAndLoadAd();
+    if (widget.newsItemId != null) _fetchFavoriteStatus();
+  }
+
+  Future<void> _fetchFavoriteStatus() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final result = await Supabase.instance.client
+          .from('users')
+          .select('news_items_favorited')
+          .eq('id', userId)
+          .maybeSingle();
+      final raw = result?['news_items_favorited'];
+      if (raw is List && mounted) {
+        setState(
+          () => _isFavorited = raw
+              .map((e) => e.toString())
+              .contains(widget.newsItemId),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final itemId = widget.newsItemId;
+    if (userId == null || itemId == null) return;
+    final newVal = !_isFavorited;
+    setState(() => _isFavorited = newVal);
+    try {
+      final result = await Supabase.instance.client
+          .from('users')
+          .select('news_items_favorited')
+          .eq('id', userId)
+          .maybeSingle();
+      final raw = result?['news_items_favorited'];
+      final current =
+          raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
+      if (newVal) {
+        if (!current.contains(itemId)) current.add(itemId);
+      } else {
+        current.remove(itemId);
+      }
+      await Supabase.instance.client
+          .from('users')
+          .update({'news_items_favorited': current})
+          .eq('id', userId);
+    } catch (_) {
+      if (mounted) setState(() => _isFavorited = !newVal);
+    }
   }
 
   Future<void> _checkAndLoadAd() async {
@@ -83,6 +139,35 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
   void dispose() {
     _bannerAd?.dispose();
     super.dispose();
+  }
+
+  Widget _modeTab({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : Colors.white54,
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -206,6 +291,32 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                               ),
                             ),
                           ),
+
+                          // Heart / favorite button
+                          if (widget.newsItemId != null)
+                            Positioned(
+                              top: 12,
+                              right: 12,
+                              child: GestureDetector(
+                                onTap: _toggleFavorite,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _isFavorited
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    color: _isFavorited
+                                        ? const Color(0xFFC8936A)
+                                        : Colors.white70,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -326,9 +437,40 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
 
                   const SizedBox(height: 24),
 
+                  // Mode toggle
+                  if (widget.contentDescription != null &&
+                      widget.contentDescription!.isNotEmpty)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: Row(
+                        children: [
+                          _modeTab(
+                            label: 'Deep Dive',
+                            selected: _selectedMode == 0,
+                            onTap: () => setState(() => _selectedMode = 0),
+                          ),
+                          _modeTab(
+                            label: 'Explain in under 100',
+                            selected: _selectedMode == 1,
+                            onTap: () => setState(() => _selectedMode = 1),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
+
                   // Summary/Content
                   Text(
-                    widget.contentSummary,
+                    _selectedMode == 1 &&
+                            widget.contentDescription != null &&
+                            widget.contentDescription!.isNotEmpty
+                        ? widget.contentDescription!
+                        : widget.contentSummary,
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
