@@ -13,13 +13,18 @@ class PodcastsPage extends StatefulWidget {
 class _PodcastsPageState extends State<PodcastsPage> {
   final _supabase = Supabase.instance.client;
   List<dynamic> _podcasts = [];
+  Set<String> _unlockedIds = {};
   bool _isLoading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _fetchPodcasts();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await Future.wait([_fetchPodcasts(), _fetchUnlockedPodcasts()]);
   }
 
   Future<void> _fetchPodcasts() async {
@@ -41,6 +46,81 @@ class _PodcastsPageState extends State<PodcastsPage> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _fetchUnlockedPodcasts() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+      final result = await _supabase
+          .from('users')
+          .select('podcasts_unlocked')
+          .eq('id', userId)
+          .maybeSingle();
+      final raw = result?['podcasts_unlocked'];
+      if (raw is List) {
+        setState(() {
+          _unlockedIds = raw.map((e) => e.toString()).toSet();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _unlockPodcast(String podcastId, PodcastItem item) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+      final updated = [..._unlockedIds, podcastId];
+      await _supabase
+          .from('users')
+          .update({'podcasts_unlocked': updated})
+          .eq('id', userId);
+      setState(() {
+        _unlockedIds = updated.toSet();
+      });
+      AudioManager.instance.playPodcast(item);
+    } catch (_) {}
+  }
+
+  void _onPodcastTap(String podcastId, PodcastItem item) {
+    if (_unlockedIds.contains(podcastId)) {
+      AudioManager.instance.playPodcast(item);
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Unlock Podcast',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Unlock "${item.title}" to start listening?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _unlockPodcast(podcastId, item);
+            },
+            child: const Text(
+              'Unlock',
+              style: TextStyle(color: Color(0xFFC8936A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _formatTimeAgo(String? dateString) {
@@ -116,7 +196,9 @@ class _PodcastsPageState extends State<PodcastsPage> {
             } catch (e) {}
           }
 
-          // Using the podcast title as a unique identifier if ID is missing.
+          final podcastId = item['id']?.toString() ?? '';
+          final isUnlocked = _unlockedIds.contains(podcastId);
+
           final podcastItem = PodcastItem(
             title: title,
             date: _formatTimeAgo(timestamp),
@@ -128,9 +210,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
           );
 
           return GestureDetector(
-            onTap: () {
-              AudioManager.instance.playPodcast(podcastItem);
-            },
+            onTap: () => _onPodcastTap(podcastId, podcastItem),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
@@ -186,6 +266,24 @@ class _PodcastsPageState extends State<PodcastsPage> {
                             ),
                           ),
                         ),
+                        // Lock icon top-right
+                        if (!isUnlocked)
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.lock,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                         // Title and Actions Overlay Bottom
                         Positioned(
                           bottom: 12,
@@ -226,8 +324,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                               AudioManager.instance.isPlaying;
 
                                           return GestureDetector(
-                                            onTap: () => AudioManager.instance
-                                                .playPodcast(podcastItem),
+                                            onTap: () => _onPodcastTap(podcastId, podcastItem),
                                             child: Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -235,9 +332,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                                     vertical: 6,
                                                   ),
                                               decoration: BoxDecoration(
-                                                color: Colors.white.withOpacity(
-                                                  0.15,
-                                                ),
+                                                color: Colors.white.withValues(alpha: 0.15),
                                                 borderRadius:
                                                     BorderRadius.circular(20),
                                                 border: Border.all(
