@@ -7,6 +7,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'analytics_service.dart';
 
 import 'shots_page.dart';
 import 'news_assistant_page.dart';
@@ -65,6 +68,12 @@ void main() async {
     debugPrint("Error: Missing Supabase credentials in .env file");
   }
 
+  try {
+    await Firebase.initializeApp();
+    AnalyticsService.instance.initialize();
+  } catch (e) {
+    debugPrint('Firebase init failed: $e');
+  }
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   await MobileAds.instance.initialize();
   MobileAds.instance.updateRequestConfiguration(
@@ -762,6 +771,10 @@ class _NewsListPageState extends State<NewsListPage> {
 
                           return GestureDetector(
                             onTap: () {
+                              AnalyticsService.instance.logArticleView(
+                                articleId: itemId,
+                                title: contentTitle,
+                              );
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
