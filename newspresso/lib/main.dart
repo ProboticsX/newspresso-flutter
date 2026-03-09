@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -17,6 +18,38 @@ import 'login_screen.dart';
 import 'profile_page.dart';
 import 'onboarding_flow.dart';
 import 'splash_screen.dart';
+
+String _formatTimeAgo(dynamic timestampField) {
+  if (timestampField == null) return 'Unknown';
+  try {
+    DateTime? date;
+    if (timestampField is String) {
+      date = DateTime.tryParse(timestampField);
+      if (date == null) {
+        final doubleVal = double.tryParse(timestampField);
+        if (doubleVal != null) {
+          int epochValue = doubleVal.toInt();
+          if (epochValue < 10000000000) epochValue *= 1000;
+          date = DateTime.fromMillisecondsSinceEpoch(epochValue);
+        }
+      }
+    } else if (timestampField is int || timestampField is double) {
+      int epochValue = (timestampField as num).toInt();
+      if (epochValue < 10000000000) epochValue *= 1000;
+      date = DateTime.fromMillisecondsSinceEpoch(epochValue);
+    }
+    if (date == null) return 'Unknown';
+    final difference = DateTime.now().difference(date);
+    if (difference.inDays > 7) return '${difference.inDays ~/ 7} weeks ago';
+    if (difference.inDays > 1) return '${difference.inDays} days ago';
+    if (difference.inDays == 1) return '1 day ago';
+    if (difference.inHours > 0) return '${difference.inHours} hours ago';
+    if (difference.inMinutes > 0) return '${difference.inMinutes} minutes ago';
+    return 'Just now';
+  } catch (_) {
+    return 'Unknown';
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -182,6 +215,7 @@ class _MainShell extends StatefulWidget {
 class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<bool>? _notificationClickSub;
+  StreamSubscription<Uri>? _deepLinkSub;
   bool _wentToBackground = false;
 
   final _podcastsRefresh = ValueNotifier<int>(0);
@@ -203,6 +237,84 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
       if (!clicked || !mounted) return;
       _navigateToPodcast();
     });
+
+    _initDeepLinks();
+  }
+
+  Future<void> _initDeepLinks() async {
+    final appLinks = AppLinks();
+
+    // Handle link that cold-started the app
+    final initialUri = await appLinks.getInitialLink();
+    debugPrint('[DeepLink] initialUri: $initialUri');
+    if (initialUri != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _handleDeepLink(initialUri),
+      );
+    }
+
+    // Handle links while app is running
+    _deepLinkSub = appLinks.uriLinkStream.listen(_handleDeepLink);
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    debugPrint('[DeepLink] received: $uri');
+    // Matches https://www.newspresso.org/news/<id>
+    final segments = uri.pathSegments;
+    debugPrint('[DeepLink] segments: $segments');
+    if (segments.length >= 2 && segments[0] == 'news') {
+      final newsId = segments[1];
+      await _openNewsById(newsId);
+    }
+  }
+
+  Future<void> _openNewsById(String newsId) async {
+    debugPrint('[DeepLink] opening newsId: $newsId');
+    if (!mounted) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('newspresso_aggregated_news_in')
+          .select(
+            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions',
+          )
+          .eq('id', newsId)
+          .maybeSingle();
+      debugPrint('[DeepLink] supabase result: $data');
+      if (data == null || !mounted) return;
+
+      final title = data['content_title']?.toString() ?? '';
+      final imageUrl = data['url_to_image']?.toString();
+      final description = data['content_description']?.toString() ?? '';
+      final contentSummary = data['content_summary']?.toString() ?? description;
+      final ts = data['timestamp']?.toString() ?? '';
+      final publishedText = ts.isNotEmpty ? 'Published ${_formatTimeAgo(ts)}' : 'Newspresso';
+
+      List<dynamic> articlesList = [];
+      final af = data['articles'];
+      if (af is List) articlesList = af;
+
+      List<String> questionsList = [];
+      final qf = data['questions'];
+      if (qf is List) questionsList = qf.map((e) => e.toString()).toList();
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NewsDetailPage(
+            contentTitle: title,
+            imageUrl: imageUrl,
+            contentSummary: contentSummary,
+            contentDescription: description,
+            articlesList: articlesList,
+            publishedText: publishedText,
+            totalSources: articlesList.length,
+            questionsList: questionsList,
+            newsItemId: newsId,
+          ),
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('[DeepLink] error: $e\n$st');
+    }
   }
 
   // iOS: fires when the app is brought back to the foreground (e.g. tapping
@@ -234,6 +346,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _notificationClickSub?.cancel();
+    _deepLinkSub?.cancel();
     _podcastsRefresh.dispose();
     super.dispose();
   }
@@ -527,53 +640,6 @@ class _NewsListPageState extends State<NewsListPage> {
     }
   }
 
-  String _formatTimeAgo(dynamic timestampField) {
-    if (timestampField == null) return 'Unknown';
-    try {
-      DateTime? date;
-
-      if (timestampField is String) {
-        // Try to parse as an ISO-8601 string like "2026-02-25 20:49:32.13597+00"
-        date = DateTime.tryParse(timestampField);
-
-        // If it failed, maybe it's a string representation of a unix epoch
-        if (date == null) {
-          final doubleVal = double.tryParse(timestampField);
-          if (doubleVal != null) {
-            int epochValue = doubleVal.toInt();
-            if (epochValue < 10000000000) epochValue *= 1000;
-            date = DateTime.fromMillisecondsSinceEpoch(epochValue);
-          }
-        }
-      } else if (timestampField is int || timestampField is double) {
-        int epochValue = (timestampField as num).toInt();
-        // Check if magnitude is likely seconds rather than ms
-        if (epochValue < 10000000000) {
-          epochValue *= 1000;
-        }
-        date = DateTime.fromMillisecondsSinceEpoch(epochValue);
-      }
-
-      if (date == null) return 'Unknown';
-
-      final difference = DateTime.now().difference(date);
-      if (difference.inDays > 7) {
-        return '${difference.inDays ~/ 7} weeks ago';
-      } else if (difference.inDays > 1) {
-        return '${difference.inDays} days ago';
-      } else if (difference.inDays == 1) {
-        return '1 day ago';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours} hours ago';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes} minutes ago';
-      } else {
-        return 'Just now';
-      }
-    } catch (e) {
-      return 'Unknown';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {

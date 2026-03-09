@@ -1,4 +1,4 @@
-package com.example.newspresso
+package com.team.newspresso
 
 import com.ryanheise.audioservice.AudioServiceActivity
 

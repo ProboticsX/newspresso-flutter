@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
@@ -39,6 +40,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
   bool _bannerAdLoaded = false;
   int _selectedMode = 0; // 0 = Deep Dive, 1 = Explain under 100
   bool _isFavorited = false;
+  final _shareButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -200,27 +202,65 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  // Back button
-                  InkWell(
-                    onTap: () => Navigator.pop(context),
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white24, width: 0.5),
-                        color: Colors.white.withValues(alpha: 0.0),
-                      ),
-                      child: const Padding(
-                        padding: EdgeInsets.only(left: 6.0),
-                        child: Icon(
-                          Icons.arrow_back_ios,
-                          size: 20,
-                          color: Colors.white,
+                  // Back + Share row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      InkWell(
+                        onTap: () => Navigator.pop(context),
+                        borderRadius: BorderRadius.circular(24),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white24, width: 0.5),
+                            color: Colors.white.withValues(alpha: 0.0),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 6.0),
+                            child: Icon(
+                              Icons.arrow_back_ios,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      if (widget.newsItemId != null)
+                        InkWell(
+                          key: _shareButtonKey,
+                          onTap: () {
+                            final url =
+                                'https://www.newspresso.org/news/${widget.newsItemId}';
+                            final box = _shareButtonKey.currentContext
+                                ?.findRenderObject() as RenderBox?;
+                            final origin = box != null
+                                ? box.localToGlobal(Offset.zero) & box.size
+                                : null;
+                            Share.share(
+                              '${widget.contentTitle}\n\n$url',
+                              sharePositionOrigin: origin,
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: Colors.white24, width: 0.5),
+                              color: Colors.white.withValues(alpha: 0.0),
+                            ),
+                            child: const Icon(
+                              Icons.ios_share,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 24),
 
