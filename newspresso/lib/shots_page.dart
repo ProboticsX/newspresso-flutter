@@ -5,6 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
+import 'user_preferences.dart';
 
 class ShotsPage extends StatefulWidget {
   const ShotsPage({super.key});
@@ -44,10 +45,14 @@ class _ShotsPageState extends State<ShotsPage> {
     _fetchShots();
     _checkAndLoadAd();
     _fetchFavorites();
+    UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
   }
+
+  void _onLanguageChange() => setState(() {});
 
   @override
   void dispose() {
+    UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
     _interstitialAd?.dispose();
     super.dispose();
   }
@@ -114,7 +119,7 @@ class _ShotsPageState extends State<ShotsPage> {
       final res = await _supabase
           .from('newspresso_aggregated_news_in')
           .select(
-            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
           )
           .order('timestamp', ascending: false);
 
@@ -383,12 +388,15 @@ class _ShotsPageState extends State<ShotsPage> {
     final scale = 1.0 - (stackPosition * 0.04);
     final topOffset = stackPosition * 18.0;
 
-    // Extract data
+    // Extract data (resolve translated fields if language is not English)
+    final resolved =
+        UserPreferences.resolveContent(item, UserPreferences.instance.language);
     final itemId = item['id']?.toString() ?? '';
-    final title = item['content_title']?.toString() ?? '';
+    final title = resolved['content_title']?.toString() ?? '';
     final imageUrl = item['url_to_image']?.toString();
-    final description = item['content_description']?.toString() ?? '';
-    final contentSummary = item['content_summary']?.toString() ?? description;
+    final description = resolved['content_description']?.toString() ?? '';
+    final contentSummary =
+        resolved['content_summary']?.toString() ?? description;
     final publishedText = 'Published ${_formatTimeAgo(item['timestamp'])}';
 
     List<dynamic> articlesList = [];
@@ -396,7 +404,7 @@ class _ShotsPageState extends State<ShotsPage> {
     if (af is List) articlesList = af;
 
     List<String> questionsList = [];
-    final qf = item['questions'];
+    final qf = resolved['questions'];
     if (qf is List) questionsList = qf.map((e) => e.toString()).toList();
 
     // Front card drag offset (negative = swiped up)

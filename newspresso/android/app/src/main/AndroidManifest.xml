@@ -7,7 +7,7 @@
     <!-- Required on Android 13+ (API 33) to show media playback notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="newspresso"
+        android:label="Newspresso"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

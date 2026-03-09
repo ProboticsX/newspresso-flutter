@@ -9,6 +9,7 @@ import 'onboarding_flow.dart' show kIndianCities;
 import 'package:url_launcher/url_launcher.dart';
 import 'plan_page.dart';
 import 'favorites_page.dart';
+import 'user_preferences.dart';
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (userId == null) return;
       final result = await Supabase.instance.client
           .from('users')
-          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission')
+          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission, language_selected')
           .eq('id', userId)
           .maybeSingle();
       if (mounted) {
@@ -67,6 +68,81 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       }
     }
+  }
+
+  void _showLanguagePicker(BuildContext context) {
+    final current =
+        _userProfile?['language_selected']?.toString() ?? 'en';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select Language',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _LanguageOption(
+                label: 'English',
+                sublabel: 'English',
+                langCode: 'en',
+                isSelected: current == 'en',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await UserPreferences.instance.setLanguage('en');
+                  if (mounted) {
+                    setState(() =>
+                        _userProfile?['language_selected'] = 'en');
+                  }
+                },
+              ),
+              _LanguageOption(
+                label: 'हिन्दी',
+                sublabel: 'Hindi',
+                langCode: 'hi',
+                isSelected: current == 'hi',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await UserPreferences.instance.setLanguage('hi');
+                  if (mounted) {
+                    setState(() =>
+                        _userProfile?['language_selected'] = 'hi');
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -290,6 +366,26 @@ class _ProfilePageState extends State<ProfilePage> {
                                   );
                                   _fetchUserProfile();
                                 },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── Language ──────────────────────────────────────
+                          _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF0A2A1A),
+                                icon: Icons.language,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'Language',
+                                subtitle: (_userProfile?['language_selected'] ?? 'en') == 'hi'
+                                    ? 'हिन्दी'
+                                    : 'English',
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () => _showLanguagePicker(context),
                               ),
                             ],
                           ),
@@ -1700,6 +1796,61 @@ class _ActionTile extends StatelessWidget {
                 color: labelColor.withValues(alpha: 0.4),
                 size: 18,
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LanguageOption extends StatelessWidget {
+  final String label;
+  final String sublabel;
+  final String langCode;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LanguageOption({
+    required this.label,
+    required this.sublabel,
+    required this.langCode,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    sublabel,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check, color: Color(0xFFC8936A), size: 20),
           ],
         ),
       ),

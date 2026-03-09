@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'news_detail_page.dart';
 import 'news_assistant_page.dart';
+import 'user_preferences.dart';
 
 class FavoritesPage extends StatefulWidget {
   const FavoritesPage({super.key});
@@ -44,7 +45,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       final items = await _supabase
           .from('newspresso_aggregated_news_in')
           .select(
-            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
           )
           .inFilter('id', _favIds);
       setState(() {
@@ -160,20 +161,22 @@ class _FavoritesPageState extends State<FavoritesPage> {
                     padding: const EdgeInsets.only(top: 16, bottom: 24),
                     itemCount: _items.length,
                     itemBuilder: (context, index) {
-                      final item = _items[index];
-                      final itemId = item['id']?.toString() ?? '';
+                      final raw = _items[index];
+                      final item = UserPreferences.resolveContent(
+                          raw, UserPreferences.instance.language);
+                      final itemId = raw['id']?.toString() ?? '';
                       final contentTitle =
                           item['content_title']?.toString() ?? 'No title';
-                      final imageUrl = item['url_to_image']?.toString();
+                      final imageUrl = raw['url_to_image']?.toString();
                       final contentSummary =
                           item['content_summary']?.toString() ?? '';
                       final contentDescription =
                           item['content_description']?.toString();
                       final publishedText =
-                          'Published ${_formatTimeAgo(item['timestamp'])}';
+                          'Published ${_formatTimeAgo(raw['timestamp'])}';
 
                       List<dynamic> articlesList = [];
-                      final af = item['articles'];
+                      final af = raw['articles'];
                       if (af is List) articlesList = af;
 
                       List<String> questionsList = [];

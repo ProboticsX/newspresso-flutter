@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'analytics_service.dart';
+import 'user_preferences.dart';
 
 import 'shots_page.dart';
 import 'news_assistant_page.dart';
@@ -160,6 +161,10 @@ class _MainAppState extends State<MainApp> {
           _checkingProfile = false;
         });
       }
+      // Load language preference once after confirming user exists
+      if (result != null) {
+        await UserPreferences.instance.load();
+      }
     } catch (_) {
       if (mounted) setState(() => _checkingProfile = false);
     }
@@ -281,15 +286,18 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
     debugPrint('[DeepLink] opening newsId: $newsId');
     if (!mounted) return;
     try {
-      final data = await Supabase.instance.client
+      final raw = await Supabase.instance.client
           .from('newspresso_aggregated_news_in')
           .select(
-            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
           )
           .eq('id', newsId)
           .maybeSingle();
-      debugPrint('[DeepLink] supabase result: $data');
-      if (data == null || !mounted) return;
+      debugPrint('[DeepLink] supabase result: $raw');
+      if (raw == null || !mounted) return;
+
+      final data = UserPreferences.resolveContent(
+          raw, UserPreferences.instance.language);
 
       final title = data['content_title']?.toString() ?? '';
       final imageUrl = data['url_to_image']?.toString();
@@ -622,10 +630,20 @@ class _NewsListPageState extends State<NewsListPage> {
   List<dynamic> _newsList = [];
   bool _isLoading = true;
   String? _error;
+
   @override
   void initState() {
     super.initState();
     _fetchNews();
+    UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
+  }
+
+  void _onLanguageChange() => setState(() {});
+
+  @override
+  void dispose() {
+    UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
+    super.dispose();
   }
 
   Future<void> _fetchNews() async {
@@ -633,7 +651,7 @@ class _NewsListPageState extends State<NewsListPage> {
       final response = await supabase
           .from('newspresso_aggregated_news_in')
           .select(
-            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions',
+            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
           )
           .order('timestamp', ascending: false);
 
@@ -708,7 +726,9 @@ class _NewsListPageState extends State<NewsListPage> {
                     : ListView.builder(
                         itemCount: _newsList.length,
                         itemBuilder: (context, index) {
-                          final item = _newsList[index] as Map<String, dynamic>;
+                          final raw = _newsList[index] as Map<String, dynamic>;
+                          final item = UserPreferences.resolveContent(
+                              raw, UserPreferences.instance.language);
                           final itemId = item['id']?.toString() ?? '';
                           final contentTitle =
                               item['content_title']?.toString() ?? 'No title';
