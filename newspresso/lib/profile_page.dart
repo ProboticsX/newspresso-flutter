@@ -116,6 +116,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 isSelected: current == 'en',
                 onTap: () async {
                   Navigator.pop(context);
+                  await AudioManager.instance.stop();
                   await UserPreferences.instance.setLanguage('en');
                   if (mounted) {
                     setState(() =>
@@ -130,6 +131,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 isSelected: current == 'hi',
                 onTap: () async {
                   Navigator.pop(context);
+                  await AudioManager.instance.stop();
                   await UserPreferences.instance.setLanguage('hi');
                   if (mounted) {
                     setState(() =>

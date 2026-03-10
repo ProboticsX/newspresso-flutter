@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'sources_modal.dart';
 import 'audio_manager.dart';
+import 'user_preferences.dart';
 
 class PodcastsPage extends StatefulWidget {
   final ValueNotifier<int>? refreshSignal;
@@ -25,11 +26,15 @@ class _PodcastsPageState extends State<PodcastsPage> {
     super.initState();
     _loadData();
     widget.refreshSignal?.addListener(_onRefresh);
+    UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
   }
+
+  void _onLanguageChange() => setState(() {});
 
   @override
   void dispose() {
     widget.refreshSignal?.removeListener(_onRefresh);
+    UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
     super.dispose();
   }
 
@@ -41,7 +46,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
       final podcastsFuture = _supabase
           .from('podcasts')
           .select(
-            'id, podcast_title, podcast_summary, podcast_url_to_image, public_url, timestamp, podcast_sources, podcast_questions',
+            'id, podcast_title, podcast_summary, podcast_url_to_image, public_url, timestamp, podcast_sources, podcast_questions, translations',
           )
           .order('timestamp', ascending: false);
       final userFuture = _fetchUserData();
@@ -243,15 +248,17 @@ class _PodcastsPageState extends State<PodcastsPage> {
         padding: const EdgeInsets.only(top: 16, bottom: 80),
         itemCount: _podcasts.length,
         itemBuilder: (context, index) {
-          final item = _podcasts[index] as Map<String, dynamic>;
+          final raw = _podcasts[index] as Map<String, dynamic>;
+          final item = UserPreferences.resolvePodcast(
+              raw, UserPreferences.instance.language);
           final title = item['podcast_title']?.toString() ?? '';
           final summary = item['podcast_summary']?.toString() ?? '';
-          final imageUrl = item['podcast_url_to_image']?.toString() ?? '';
-          final timestamp = item['timestamp']?.toString();
+          final imageUrl = raw['podcast_url_to_image']?.toString() ?? '';
+          final timestamp = raw['timestamp']?.toString();
           final audioUrl = item['public_url']?.toString() ?? '';
 
           List<dynamic> sourcesList = [];
-          final dynamic sourcesField = item['podcast_sources'];
+          final dynamic sourcesField = raw['podcast_sources'];
           if (sourcesField is List) {
             sourcesList = sourcesField;
           } else if (sourcesField is Map && sourcesField.containsKey('items')) {
@@ -262,7 +269,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
           }
 
           List<dynamic> questionsList = [];
-          final dynamic qField = item['podcast_questions'];
+          final dynamic qField = item['podcast_questions']; // from resolved item
           if (qField is List) {
             questionsList = qField;
           } else if (qField is Map && qField.containsKey('items')) {
@@ -276,7 +283,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
             } catch (_) {}
           }
 
-          final podcastId = item['id']?.toString() ?? '';
+          final podcastId = raw['id']?.toString() ?? '';
           // Premium users have all podcasts unlocked
           final isUnlocked = _podcastLimit == null || _unlockedIds.contains(podcastId);
 

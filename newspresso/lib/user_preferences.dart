@@ -52,4 +52,23 @@ class UserPreferences {
       'questions': langData['questions'] ?? item['questions'],
     };
   }
+
+  /// Resolves translated fields from a podcast item map.
+  /// Falls back to English fields if the translation is absent.
+  static Map<String, dynamic> resolvePodcast(
+      Map<String, dynamic> item, String lang) {
+    if (lang == 'en') return item;
+    final trans = item['translations'];
+    if (trans is! Map) return item;
+    final langData = trans[lang];
+    if (langData is! Map) return item;
+    return {
+      ...item,
+      'podcast_title': langData['podcast_title'] ?? item['podcast_title'],
+      'podcast_summary': langData['podcast_summary'] ?? item['podcast_summary'],
+      'public_url': langData['public_url'] ?? item['public_url'],
+      'podcast_questions':
+          langData['podcast_questions'] ?? item['podcast_questions'],
+    };
+  }
 }
