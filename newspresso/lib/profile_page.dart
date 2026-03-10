@@ -38,7 +38,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (userId == null) return;
       final result = await Supabase.instance.client
           .from('users')
-          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission, language_selected')
+          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission, language_selected, phone')
           .eq('id', userId)
           .maybeSingle();
       if (mounted) {
@@ -489,7 +489,14 @@ class _ProfilePageState extends State<ProfilePage> {
                             ],
                           ),
 
-                          const SizedBox(height: 80),
+                          ListenableBuilder(
+                            listenable: AudioManager.instance,
+                            builder: (context, _) {
+                              final hasMiniPlayer =
+                                  AudioManager.instance.currentPodcast != null;
+                              return SizedBox(height: hasMiniPlayer ? 160 : 80);
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -722,6 +729,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     final dob = _formatDob(_profile?['date_of_birth']?.toString());
     final gender = _profile?['gender']?.toString() ?? '—';
     final username = _profile?['username']?.toString() ?? '';
+    final phone = _profile?['phone']?.toString();
 
     return Scaffold(
       body: Container(
@@ -836,6 +844,16 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                       const SizedBox(height: 8),
                       _InfoCard(
                         children: [
+                          // Phone Number
+                          _InfoTile(
+                            iconBg: const Color(0xFF1A3A2A),
+                            icon: Icons.phone_android,
+                            label: 'Phone Number',
+                            value: phone != null && phone.isNotEmpty
+                                ? phone
+                                : '—',
+                          ),
+                          _Divider(),
                           // Connected Account
                           Padding(
                             padding: const EdgeInsets.symmetric(

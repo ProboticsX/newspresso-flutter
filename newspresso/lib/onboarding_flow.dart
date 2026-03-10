@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'login_screen.dart';
 
 // ── Indian cities (city + state) for manual location search ──────────────────
@@ -118,6 +121,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   bool _isLoading = false;
   bool _showCreateSuccess = false;
 
+  // ── Page 0: Phone OTP ─────────────────────────────────────────────────────
+  final _phoneController = TextEditingController();
+  final _otpController   = TextEditingController();
+  String? _phoneError;
+  String? _otpError;
+  bool    _otpSent              = false;
+  bool    _isSendingOtp         = false;
+  bool    _isVerifyingOtp       = false;
+  String? _verifiedPhone;
+  String? _firebaseVerificationId;
+  int?    _forceResendToken;
+  Timer?  _resendTimer;
+  int     _resendCountdown      = 30;
+  bool    _canResend            = false;
+
   // ── Page 1: Name ──────────────────────────────────────────────────────────
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -199,6 +217,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   @override
   void dispose() {
     _pageController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
+    _resendTimer?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
     _usernameController.dispose();
@@ -315,6 +336,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     await Supabase.instance.client.auth.signOut();
   }
 
+  // ── Page 0 actions ───────────────────────────────────────────────────────
+
+  void _continuePage0() => _animateToPage(1);
+
   // ── Page 1 actions ───────────────────────────────────────────────────────
 
   void _continuePage1() {
@@ -326,19 +351,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       return;
     }
     setState(() => _nameError = null);
-    _animateToPage(1);
+    _animateToPage(2);
   }
 
   // ── Page 2 actions ───────────────────────────────────────────────────────
 
   void _continuePage2() {
-    if (_isAgeValid) _animateToPage(2);
+    if (_isAgeValid) _animateToPage(3);
   }
 
   // ── Page 3 actions ───────────────────────────────────────────────────────
 
   void _continuePage3() {
-    if (_selectedGender != null) _animateToPage(3);
+    if (_selectedGender != null) _animateToPage(4);
   }
 
   // ── Page 4 actions (username) ─────────────────────────────────────────────
@@ -392,7 +417,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   void _continuePage4() {
     if (_usernameSuccess == null || _isCheckingUsername) return;
-    _animateToPage(4);
+    _animateToPage(5);
   }
 
   // ── Page 5 actions (location) ─────────────────────────────────────────────
@@ -474,6 +499,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         'is_premium': false,
         'newspresso_assistant_limit': 3,
         'podcast_limit': 3,
+        'phone': _verifiedPhone,
+        'phone_verified': true,
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
@@ -601,6 +628,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                           controller: _pageController,
                           physics: const NeverScrollableScrollPhysics(),
                           children: [
+                            _buildPhonePage(),
                             _buildNamePage(),
                             _buildDobPage(),
                             _buildGenderPage(),
@@ -637,7 +665,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
           const Spacer(),
           Row(
-            children: List.generate(5, (i) {
+            children: List.generate(6, (i) {
               final isActive = i == _currentPage;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
@@ -655,6 +683,340 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
           const Spacer(),
           const SizedBox(width: 40),
+        ],
+      ),
+    );
+  }
+
+  // ── Page 0: Phone OTP ─────────────────────────────────────────────────────
+
+  Future<void> _sendOtp() async {
+    final digits = _phoneController.text.trim();
+    if (digits.length != 10 || !RegExp(r'^[6-9]\d{9}$').hasMatch(digits)) {
+      setState(() => _phoneError = 'Enter a valid 10-digit Indian mobile number');
+      return;
+    }
+    setState(() { _phoneError = null; _isSendingOtp = true; });
+
+    // Check if phone is already linked to another account before burning an SMS
+    try {
+      final existing = await Supabase.instance.client
+          .from('users')
+          .select('id')
+          .eq('phone', '+91$digits')
+          .maybeSingle();
+      if (!mounted) return;
+      if (existing != null) {
+        setState(() {
+          _isSendingOtp = false;
+          _phoneError = 'This number is already linked to another account. Please use a different number.';
+        });
+        return;
+      }
+    } catch (_) {
+      // Network error — let Firebase call proceed; the post-verify check will catch it
+    }
+
+    await fb.FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: '+91$digits',
+      forceResendingToken: _forceResendToken,
+      timeout: const Duration(seconds: 60),
+      codeSent: (verificationId, resendToken) {
+        if (!mounted) return;
+        setState(() {
+          _firebaseVerificationId = verificationId;
+          _forceResendToken = resendToken;
+          _verifiedPhone = '+91$digits';
+          _otpSent = true;
+          _isSendingOtp = false;
+          _otpController.clear();
+          _otpError = null;
+        });
+        _startResendCountdown();
+        AnalyticsService.instance.logPhoneOtpSent();
+      },
+      codeAutoRetrievalTimeout: (verificationId) {
+        if (mounted) setState(() => _firebaseVerificationId = verificationId);
+      },
+      verificationCompleted: (credential) async {
+        if (!mounted) return;
+        setState(() { _verifiedPhone = '+91$digits'; _isSendingOtp = false; });
+        AnalyticsService.instance.logPhoneOtpVerified(method: 'auto');
+        _continuePage0();
+      },
+      verificationFailed: (e) {
+        if (!mounted) return;
+        setState(() { _isSendingOtp = false; _phoneError = _mapFirebaseError(e.code); });
+        AnalyticsService.instance.logPhoneOtpError(code: e.code);
+      },
+    );
+  }
+
+  Future<void> _verifyOtp() async {
+    final code = _otpController.text.trim();
+    if (code.length != 6) {
+      setState(() => _otpError = 'Enter the 6-digit code sent to your phone');
+      return;
+    }
+    setState(() { _otpError = null; _isVerifyingOtp = true; });
+
+    try {
+      final credential = fb.PhoneAuthProvider.credential(
+        verificationId: _firebaseVerificationId!,
+        smsCode: code,
+      );
+      final userCred = await fb.FirebaseAuth.instance.signInWithCredential(credential);
+      if (!mounted) return;
+      if (userCred.user?.phoneNumber != _verifiedPhone) {
+        throw Exception('mismatch');
+      }
+      await fb.FirebaseAuth.instance.signOut();
+
+      final existing = await Supabase.instance.client
+          .from('users').select('id').eq('phone', _verifiedPhone!).maybeSingle();
+      if (!mounted) return;
+      if (existing != null) {
+        setState(() {
+          _isVerifyingOtp = false;
+          _otpError = 'This number is already linked to another account.';
+        });
+        AnalyticsService.instance.logPhoneOtpError(code: 'duplicate_phone');
+        return;
+      }
+
+      setState(() => _isVerifyingOtp = false);
+      AnalyticsService.instance.logPhoneOtpVerified();
+      _continuePage0();
+    } on fb.FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() { _isVerifyingOtp = false; _otpError = _mapFirebaseOtpError(e.code); });
+        AnalyticsService.instance.logPhoneOtpError(code: e.code);
+      }
+    } catch (_) {
+      if (mounted) setState(() { _isVerifyingOtp = false; _otpError = 'Verification failed. Please try again.'; });
+    }
+  }
+
+  void _startResendCountdown() {
+    _resendTimer?.cancel();
+    setState(() { _resendCountdown = 30; _canResend = false; });
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _resendCountdown--;
+        if (_resendCountdown <= 0) { _canResend = true; t.cancel(); }
+      });
+    });
+  }
+
+  String _mapFirebaseError(String? code) => switch (code) {
+    'invalid-phone-number'    => 'Invalid phone number format.',
+    'too-many-requests'       => 'Too many attempts. Please wait a few minutes.',
+    'network-request-failed'  => 'No internet connection. Try again.',
+    _                         => 'Unable to send OTP. Please try again.',
+  };
+
+  String _mapFirebaseOtpError(String? code) => switch (code) {
+    'invalid-verification-code' => 'Incorrect OTP. Please check and try again.',
+    'session-expired'           => 'OTP expired. Please request a new one.',
+    'invalid-verification-id'   => 'Session expired. Please request a new OTP.',
+    _                           => 'Verification failed. Please try again.',
+  };
+
+  Widget _buildPhonePage() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Center(
+            child: _IconCircle(
+              icon: _otpSent ? Icons.lock_outline : Icons.phone_android,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: Text(
+              _otpSent ? 'Enter verification code' : 'Verify your phone number',
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              _otpSent
+                  ? 'Sent to ${_verifiedPhone != null ? _verifiedPhone!.replaceRange(3, 8, 'XXXXX') : ''}'
+                  : "We'll send a 6-digit OTP to confirm your identity",
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 40),
+          if (!_otpSent) ...[
+            _buildLabel('Mobile Number'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    '🇮🇳  +91',
+                    style: TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 10,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      counterText: '',
+                      hintText: '10-digit mobile number',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: const Color(0xFF111111),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_phoneError != null) ...[
+              const SizedBox(height: 10),
+              _buildErrorText(_phoneError!),
+            ],
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isSendingOtp ? null : _sendOtp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFC8936A),
+                  disabledBackgroundColor: const Color(0xFF3A2A1A),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: _isSendingOtp
+                    ? const SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Send OTP',
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                          SizedBox(width: 8),
+                          Icon(Icons.send, color: Colors.white, size: 18),
+                        ],
+                      ),
+              ),
+            ),
+          ] else ...[
+            _buildLabel('Verification Code'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 28,
+                  fontWeight: FontWeight.bold, letterSpacing: 12),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: '------',
+                hintStyle: const TextStyle(color: Colors.white24, fontSize: 28, letterSpacing: 12),
+                filled: true,
+                fillColor: const Color(0xFF111111),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            if (_otpError != null) ...[
+              const SizedBox(height: 10),
+              _buildErrorText(_otpError!),
+            ],
+            const SizedBox(height: 16),
+            Center(
+              child: _canResend
+                  ? GestureDetector(
+                      onTap: () {
+                        setState(() => _otpSent = false);
+                        AnalyticsService.instance.logPhoneOtpResent();
+                        _sendOtp();
+                      },
+                      child: const Text(
+                        'Resend OTP',
+                        style: TextStyle(
+                          color: Color(0xFFC8936A), fontSize: 14,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Color(0xFFC8936A),
+                        ),
+                      ),
+                    )
+                  : Text(
+                      'Resend OTP in ${_resendCountdown}s',
+                      style: const TextStyle(color: Colors.white38, fontSize: 14),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: GestureDetector(
+                onTap: () => setState(() { _otpSent = false; _otpError = null; }),
+                child: const Text(
+                  '← Change number',
+                  style: TextStyle(color: Colors.white38, fontSize: 13),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isVerifyingOtp ? null : _verifyOtp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFC8936A),
+                  disabledBackgroundColor: const Color(0xFF3A2A1A),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: _isVerifyingOtp
+                    ? const SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Verify OTP',
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                          SizedBox(width: 8),
+                          Icon(Icons.verified_outlined, color: Colors.white, size: 18),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 32),
         ],
       ),
     );

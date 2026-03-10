@@ -59,4 +59,26 @@ class AnalyticsService {
   // Search
   Future<void> logSearch({required String query}) =>
       _analytics?.logSearch(searchTerm: query) ?? Future.value();
+
+  // Phone OTP events
+  Future<void> logPhoneOtpScreenView() =>
+      _analytics?.logScreenView(screenName: 'phone_otp') ?? Future.value();
+
+  Future<void> logPhoneOtpSent() =>
+      _analytics?.logEvent(name: 'phone_otp_sent') ?? Future.value();
+
+  Future<void> logPhoneOtpResent() =>
+      _analytics?.logEvent(name: 'phone_otp_resent') ?? Future.value();
+
+  Future<void> logPhoneOtpVerified({String method = 'manual'}) =>
+      _analytics?.logEvent(
+        name: 'phone_otp_verified',
+        parameters: {'method': method},
+      ) ?? Future.value();
+
+  Future<void> logPhoneOtpError({required String code}) =>
+      _analytics?.logEvent(
+        name: 'phone_otp_error',
+        parameters: {'error_code': code},
+      ) ?? Future.value();
 }
