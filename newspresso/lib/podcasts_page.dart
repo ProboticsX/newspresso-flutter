@@ -46,7 +46,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
       final podcastsFuture = _supabase
           .from('podcasts')
           .select(
-            'id, podcast_title, podcast_summary, podcast_url_to_image, public_url, timestamp, podcast_sources, podcast_questions, translations',
+            'id, podcast_title, podcast_summary, podcast_url_to_image, public_url, timestamp, podcast_sources, podcast_questions, translations, podcast_duration',
           )
           .order('timestamp', ascending: false);
       final userFuture = _fetchUserData();
@@ -287,6 +287,9 @@ class _PodcastsPageState extends State<PodcastsPage> {
           // Premium users have all podcasts unlocked
           final isUnlocked = _podcastLimit == null || _unlockedIds.contains(podcastId);
 
+          final durationRaw = raw['podcast_duration'];
+          final duration = durationRaw != null ? (num.tryParse(durationRaw.toString())! / 60).round() : null;
+
           final podcastItem = PodcastItem(
             title: title,
             date: _formatTimeAgo(timestamp),
@@ -295,6 +298,7 @@ class _PodcastsPageState extends State<PodcastsPage> {
             summary: summary,
             sources: sourcesList,
             questions: questionsList,
+            duration: duration,
           );
 
           return GestureDetector(
@@ -395,8 +399,9 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  // Left side: Add list and Play/Pause
-                                  Row(
+                                  // Left side: Play/Pause + duration
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       ListenableBuilder(
                                         listenable: AudioManager.instance,
@@ -453,6 +458,27 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                           );
                                         },
                                       ),
+                                      if (podcastItem.duration != null) ...[
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.headphones,
+                                              color: Colors.white54,
+                                              size: 12,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${podcastItem.duration} mins',
+                                              style: const TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   // Publish Date & Sources Text

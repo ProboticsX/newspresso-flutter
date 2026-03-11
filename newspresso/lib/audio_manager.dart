@@ -11,6 +11,7 @@ class PodcastItem {
   final String? summary;
   final List<dynamic> sources;
   final List<dynamic> questions;
+  final int? duration;
 
   PodcastItem({
     required this.title,
@@ -20,6 +21,7 @@ class PodcastItem {
     this.summary,
     this.sources = const [],
     this.questions = const [],
+    this.duration,
   });
 }
 
