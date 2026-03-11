@@ -6,10 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'analytics_service.dart';
+import 'notification_service.dart';
 import 'user_preferences.dart';
 
 import 'shots_page.dart';
@@ -72,6 +72,7 @@ void main() async {
   try {
     await Firebase.initializeApp();
     AnalyticsService.instance.initialize();
+    NotificationService.registerBackgroundHandler();
   } catch (e) {
     debugPrint('Firebase init failed: $e');
   }
@@ -107,11 +108,9 @@ class _MainAppState extends State<MainApp> {
   void initState() {
     super.initState();
 
-    // Request notification permission on Android 13+ (POST_NOTIFICATIONS).
+    // Request notification permission + subscribe to FCM topics.
     // Must be called here (not in main) — the Activity must be attached first.
-    if (Platform.isAndroid) {
-      Permission.notification.request();
-    }
+    NotificationService.instance.initialize();
 
     // Minimum splash display time
     Future.delayed(const Duration(milliseconds: 2200), () {
@@ -252,6 +251,12 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
       _navigateToPodcast();
     });
 
+    // FCM: navigate to the article when a breaking news notification is tapped
+    NotificationService.instance.onNotificationTap = (newsId) {
+      if (mounted) _openNewsById(newsId);
+    };
+    NotificationService.instance.drainPending();
+
     _initDeepLinks();
   }
 
@@ -365,6 +370,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
     _notificationClickSub?.cancel();
     _deepLinkSub?.cancel();
     _podcastsRefresh.dispose();
+    NotificationService.instance.onNotificationTap = null;
     super.dispose();
   }
 

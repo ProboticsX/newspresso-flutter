@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -934,6 +935,11 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                         ],
                       ),
 
+                      const SizedBox(height: 24),
+
+                      // ── Notifications ─────────────────────────────────────
+                      _NotificationsSection(),
+
                       const SizedBox(height: 80),
                     ],
                   ),
@@ -1818,6 +1824,155 @@ class _ActionTile extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Notifications Section ────────────────────────────────────────────────────
+
+class _NotificationsSection extends StatefulWidget {
+  const _NotificationsSection();
+
+  @override
+  State<_NotificationsSection> createState() => _NotificationsSectionState();
+}
+
+class _NotificationsSectionState extends State<_NotificationsSection> {
+  bool _permissionGranted = false;
+  bool _breakingNewsEnabled = true;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final settings =
+        await FirebaseMessaging.instance.getNotificationSettings();
+    if (mounted) {
+      setState(() {
+        _permissionGranted =
+            settings.authorizationStatus == AuthorizationStatus.authorized ||
+                settings.authorizationStatus ==
+                    AuthorizationStatus.provisional;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleBreakingNews(bool value) async {
+    setState(() => _breakingNewsEnabled = value);
+    if (value) {
+      await FirebaseMessaging.instance.subscribeToTopic('breaking_news');
+    } else {
+      await FirebaseMessaging.instance.unsubscribeFromTopic('breaking_news');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          icon: Icons.notifications_outlined,
+          label: 'Notifications',
+        ),
+        const SizedBox(height: 8),
+        _InfoCard(
+          children: [
+            if (!_permissionGranted)
+              _ActionTile(
+                iconBg: const Color(0xFF2A1A0A),
+                icon: Icons.notifications_off_outlined,
+                iconColor: Colors.orange,
+                label: 'Notifications Disabled',
+                subtitle: 'Enable in device Settings to receive alerts',
+                labelColor: Colors.orange,
+                showChevron: false,
+              )
+            else
+              _ToggleTile(
+                iconBg: const Color(0xFF1A2A1A),
+                icon: Icons.campaign_outlined,
+                label: 'Breaking News',
+                subtitle: 'Get alerted for major stories instantly',
+                value: _breakingNewsEnabled,
+                onChanged: _toggleBreakingNews,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ToggleTile extends StatelessWidget {
+  final Color iconBg;
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleTile({
+    required this.iconBg,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: Colors.white70, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: const Color(0xFFC8936A),
+          ),
+        ],
       ),
     );
   }
