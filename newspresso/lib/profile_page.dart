@@ -71,83 +71,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  void _showLanguagePicker(BuildContext context) {
-    final current =
-        _userProfile?['language_selected']?.toString() ?? 'en';
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Select Language',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _LanguageOption(
-                label: 'English',
-                sublabel: 'English',
-                langCode: 'en',
-                isSelected: current == 'en',
-                onTap: () async {
-                  Navigator.pop(context);
-                  await AudioManager.instance.stop();
-                  await UserPreferences.instance.setLanguage('en');
-                  if (mounted) {
-                    setState(() =>
-                        _userProfile?['language_selected'] = 'en');
-                  }
-                },
-              ),
-              _LanguageOption(
-                label: 'हिन्दी',
-                sublabel: 'Hindi',
-                langCode: 'hi',
-                isSelected: current == 'hi',
-                onTap: () async {
-                  Navigator.pop(context);
-                  await AudioManager.instance.stop();
-                  await UserPreferences.instance.setLanguage('hi');
-                  if (mounted) {
-                    setState(() =>
-                        _userProfile?['language_selected'] = 'hi');
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final authUser = Supabase.instance.client.auth.currentUser;
@@ -342,53 +265,28 @@ class _ProfilePageState extends State<ProfilePage> {
 
                           const SizedBox(height: 12),
 
-                          // ── Location & Privacy ────────────────────────────
+                          // ── User Preferences ──────────────────────────────
                           _InfoCard(
                             children: [
                               _ActionTile(
-                                iconBg: const Color(0xFF0A1A2E),
-                                icon: Icons.location_on_outlined,
+                                iconBg: const Color(0xFF1A1A2E),
+                                icon: Icons.tune,
                                 iconColor: const Color(0xFFC8936A),
-                                label: 'Location & Privacy',
-                                subtitle: _userProfile?['location_permission'] == true
-                                    ? 'GPS — location access granted'
-                                    : (_userProfile?['location_city'] != null &&
-                                            (_userProfile!['location_city'] as String).isNotEmpty)
-                                        ? _userProfile!['location_city'] as String
-                                        : 'Set your location',
+                                label: 'User Preferences',
+                                subtitle: 'Location, Language & Notifications',
                                 labelColor: Colors.white,
                                 showChevron: true,
                                 onTap: () async {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => LocationPrivacyPage(
+                                      builder: (_) => UserPreferencesPage(
                                         userProfile: _userProfile,
                                       ),
                                     ),
                                   );
                                   _fetchUserProfile();
                                 },
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          // ── Language ──────────────────────────────────────
-                          _InfoCard(
-                            children: [
-                              _ActionTile(
-                                iconBg: const Color(0xFF0A2A1A),
-                                icon: Icons.language,
-                                iconColor: const Color(0xFFC8936A),
-                                label: 'Language',
-                                subtitle: (_userProfile?['language_selected'] ?? 'en') == 'hi'
-                                    ? 'हिन्दी'
-                                    : 'English',
-                                labelColor: Colors.white,
-                                showChevron: true,
-                                onTap: () => _showLanguagePicker(context),
                               ),
                             ],
                           ),
@@ -935,10 +833,282 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                         ],
                       ),
 
+                      const SizedBox(height: 80),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── User Preferences Page ───────────────────────────────────────────────────
+
+class UserPreferencesPage extends StatefulWidget {
+  final Map<String, dynamic>? userProfile;
+  const UserPreferencesPage({super.key, required this.userProfile});
+
+  @override
+  State<UserPreferencesPage> createState() => _UserPreferencesPageState();
+}
+
+class _UserPreferencesPageState extends State<UserPreferencesPage> {
+  late Map<String, dynamic>? _profile;
+  bool _notifPermissionGranted = false;
+  bool _breakingNewsEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.userProfile != null
+        ? Map<String, dynamic>.from(widget.userProfile!)
+        : null;
+    _loadNotifState();
+  }
+
+  Future<void> _loadNotifState() async {
+    final settings =
+        await FirebaseMessaging.instance.getNotificationSettings();
+    if (mounted) {
+      setState(() {
+        _notifPermissionGranted =
+            settings.authorizationStatus == AuthorizationStatus.authorized ||
+                settings.authorizationStatus ==
+                    AuthorizationStatus.provisional;
+      });
+    }
+  }
+
+  Future<void> _toggleBreakingNews(bool value) async {
+    setState(() => _breakingNewsEnabled = value);
+    if (value) {
+      await FirebaseMessaging.instance.subscribeToTopic('breaking_news');
+    } else {
+      await FirebaseMessaging.instance.unsubscribeFromTopic('breaking_news');
+    }
+  }
+
+  void _showLanguagePicker(BuildContext context) {
+    final current = _profile?['language_selected']?.toString() ?? 'en';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select Language',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _LanguageOption(
+                label: 'English',
+                sublabel: 'English',
+                langCode: 'en',
+                isSelected: current == 'en',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await AudioManager.instance.stop();
+                  await UserPreferences.instance.setLanguage('en');
+                  if (mounted) {
+                    setState(() => _profile?['language_selected'] = 'en');
+                  }
+                },
+              ),
+              _LanguageOption(
+                label: 'हिन्दी',
+                sublabel: 'Hindi',
+                langCode: 'hi',
+                isSelected: current == 'hi',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await AudioManager.instance.stop();
+                  await UserPreferences.instance.setLanguage('hi');
+                  if (mounted) {
+                    setState(() => _profile?['language_selected'] = 'hi');
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF6B4E38), Colors.black],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0.0, 0.35],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── App bar ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.chevron_left,
+                          color: Colors.white, size: 28),
+                    ),
+                    const Text(
+                      'User Preferences',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Location & Privacy ───────────────────────────────
+                      _SectionHeader(
+                        icon: Icons.location_on_outlined,
+                        label: 'Location & Privacy',
+                      ),
+                      const SizedBox(height: 8),
+                      _InfoCard(
+                        children: [
+                          _ActionTile(
+                            iconBg: const Color(0xFF0A1A2E),
+                            icon: Icons.location_on_outlined,
+                            iconColor: const Color(0xFFC8936A),
+                            label: 'Location & Privacy',
+                            subtitle: _profile?['location_permission'] == true
+                                ? 'GPS — location access granted'
+                                : (_profile?['location_city'] != null &&
+                                        (_profile!['location_city'] as String)
+                                            .isNotEmpty)
+                                    ? _profile!['location_city'] as String
+                                    : 'Set your location',
+                            labelColor: Colors.white,
+                            showChevron: true,
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => LocationPrivacyPage(
+                                    userProfile: _profile,
+                                  ),
+                                ),
+                              );
+                              // Refresh location subtitle
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ],
+                      ),
+
                       const SizedBox(height: 24),
 
-                      // ── Notifications ─────────────────────────────────────
-                      _NotificationsSection(),
+                      // ── Language ─────────────────────────────────────────
+                      _SectionHeader(
+                        icon: Icons.language,
+                        label: 'Language',
+                      ),
+                      const SizedBox(height: 8),
+                      _InfoCard(
+                        children: [
+                          _ActionTile(
+                            iconBg: const Color(0xFF0A2A1A),
+                            icon: Icons.language,
+                            iconColor: const Color(0xFFC8936A),
+                            label: 'Language',
+                            subtitle:
+                                (_profile?['language_selected'] ?? 'en') == 'hi'
+                                    ? 'हिन्दी'
+                                    : 'English',
+                            labelColor: Colors.white,
+                            showChevron: true,
+                            onTap: () => _showLanguagePicker(context),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // ── Notifications ────────────────────────────────────
+                      _SectionHeader(
+                        icon: Icons.notifications_outlined,
+                        label: 'Notifications',
+                      ),
+                      const SizedBox(height: 8),
+                      _InfoCard(
+                        children: [
+                          if (!_notifPermissionGranted)
+                            _ActionTile(
+                              iconBg: const Color(0xFF2A1A0A),
+                              icon: Icons.notifications_off_outlined,
+                              iconColor: Colors.orange,
+                              label: 'Notifications Disabled',
+                              subtitle:
+                                  'Enable in device Settings to receive alerts',
+                              labelColor: Colors.orange,
+                              showChevron: false,
+                            )
+                          else
+                            _ToggleTile(
+                              iconBg: const Color(0xFF1A2A1A),
+                              icon: Icons.campaign_outlined,
+                              label: 'Breaking News',
+                              subtitle: 'Get alerted for major stories instantly',
+                              value: _breakingNewsEnabled,
+                              onChanged: _toggleBreakingNews,
+                            ),
+                        ],
+                      ),
 
                       const SizedBox(height: 80),
                     ],
