@@ -1,4 +1,5 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Must be a top-level function — called by FCM when app is terminated
@@ -42,8 +43,24 @@ class NotificationService {
       sound: true,
     );
 
+    // On iOS the APNs token arrives asynchronously — wait for it before
+    // subscribing, otherwise FCM throws apns-token-not-set.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      String? apnsToken;
+      for (int i = 0; i < 10 && apnsToken == null; i++) {
+        apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        if (apnsToken == null) await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+
     // All users subscribe to this topic — this is how breaking news is delivered
-    await FirebaseMessaging.instance.subscribeToTopic('breaking_news');
+    try {
+      await FirebaseMessaging.instance.subscribeToTopic('breaking_news');
+    } catch (e) {
+      // APNs token may not be ready yet on first launch; subscription will be
+      // retried automatically by FCM on the next app launch.
+      debugPrint('[NotificationService] subscribeToTopic failed: $e');
+    }
 
     // Local notifications: used to show FCM messages when app is in foreground
     const androidSettings =
