@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'audio_manager.dart';
 
 class PlanPage extends StatefulWidget {
   final bool isPremium;
+  final String source;
 
-  const PlanPage({super.key, required this.isPremium});
+  const PlanPage({super.key, required this.isPremium, this.source = 'profile'});
 
   @override
   State<PlanPage> createState() => _PlanPageState();
@@ -21,10 +23,12 @@ class _PlanPageState extends State<PlanPage> {
   void initState() {
     super.initState();
     _isPremium = widget.isPremium;
+    AnalyticsService.instance.logPlanPageViewed(source: widget.source);
   }
 
   Future<void> _selectPlan(bool premium) async {
     if (_isPremium == premium || _isUpdating) return;
+    if (premium) AnalyticsService.instance.logPlanUpgradeTapped();
     setState(() => _isUpdating = true);
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -35,7 +39,14 @@ class _PlanPageState extends State<PlanPage> {
             .eq('id', userId);
       }
       await AudioManager.instance.stop();
-      if (mounted) setState(() => _isPremium = premium);
+      if (mounted) {
+        setState(() => _isPremium = premium);
+        if (premium) {
+          AnalyticsService.instance.logPlanUpgraded();
+        } else {
+          AnalyticsService.instance.logPlanDowngraded();
+        }
+      }
     } catch (_) {
       if (mounted) setState(() => _isPremium = !premium); // revert
     } finally {

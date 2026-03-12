@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'analytics_service.dart';
 
 class NewsAssistantPage extends StatefulWidget {
   final String newsTitle;
   final String prefillQuestion;
+  /// Where the assistant was opened from: 'shots', 'detail', 'podcast', 'favorites', 'explore'
+  final String source;
 
   const NewsAssistantPage({
     super.key,
     required this.newsTitle,
     required this.prefillQuestion,
+    this.source = 'direct',
   });
 
   @override
@@ -29,6 +32,8 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
   RewardedInterstitialAd? _rewardedAd;
   bool _isPremium = false;
   int? _questionsRemaining; // null while loading
+  int _sessionQuestionCount = 0;
+  bool _limitHitLogged = false;
 
   @override
   void initState() {
@@ -136,7 +141,10 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
       },
     );
     await _rewardedAd!.show(
-      onUserEarnedReward: (_, reward) => rewardEarned = true,
+      onUserEarnedReward: (_, reward) {
+        rewardEarned = true;
+        AnalyticsService.instance.logAssistantRewardedAdWatched();
+      },
     );
   }
 
@@ -149,11 +157,20 @@ class _NewsAssistantPageState extends State<NewsAssistantPage> {
     final newLimit = (!_isPremium && _questionsRemaining != null)
         ? _questionsRemaining! - 1
         : _questionsRemaining;
+    _sessionQuestionCount++;
+    AnalyticsService.instance.logAssistantQuestionSent(
+      source: widget.source,
+      sessionQuestionCount: _sessionQuestionCount,
+    );
     setState(() {
       _messages.add(text);
       _controller.clear();
       _questionsRemaining = newLimit;
     });
+    if (!_isPremium && newLimit == 0 && !_limitHitLogged) {
+      _limitHitLogged = true;
+      AnalyticsService.instance.logAssistantLimitHit(source: widget.source);
+    }
     if (!_isPremium) {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId != null) {

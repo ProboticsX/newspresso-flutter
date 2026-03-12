@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'analytics_service.dart';
 
 // Must be a top-level function — called by FCM when app is terminated
 @pragma('vm:entry-point')
@@ -37,11 +38,14 @@ class NotificationService {
     // Request permission (shows dialog on iOS; on Android 13+ the OS dialog is
     // already triggered by the POST_NOTIFICATIONS permission in the manifest
     // but FCM's requestPermission() handles it correctly on both platforms).
-    await FirebaseMessaging.instance.requestPermission(
+    final settings = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
+    final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    AnalyticsService.instance.logNotificationPermissionResult(granted: granted);
 
     // On iOS the APNs token arrives asynchronously — wait for it before
     // subscribing, otherwise FCM throws apns-token-not-set.
@@ -145,6 +149,7 @@ class NotificationService {
   }
 
   void _dispatch(String newsId) {
+    AnalyticsService.instance.logNotificationTapped(itemId: newsId);
     if (onNotificationTap != null) {
       onNotificationTap!(newsId);
     } else {

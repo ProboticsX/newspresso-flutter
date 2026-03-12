@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
 import 'user_preferences.dart';
@@ -178,12 +179,14 @@ class _ShotsPageState extends State<ShotsPage> {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
     final newSet = Set<String>.from(_favoritedIds);
-    if (newSet.contains(itemId)) {
-      newSet.remove(itemId);
-    } else {
+    final added = !newSet.contains(itemId);
+    if (added) {
       newSet.add(itemId);
+    } else {
+      newSet.remove(itemId);
     }
     setState(() => _favoritedIds = newSet);
+    AnalyticsService.instance.logArticleFavorite(articleId: itemId, added: added);
     try {
       await _supabase
           .from('users')
@@ -211,6 +214,10 @@ class _ShotsPageState extends State<ShotsPage> {
         if (id.isNotEmpty) {
           _dismissedIds.add(id);
           _persistDismissed();
+          AnalyticsService.instance.logShotDismissed(
+            itemId: id,
+            sessionSwipeCount: _swipeCount + 1,
+          );
         }
         _stack.removeLast();
         _fillStack();
@@ -227,6 +234,7 @@ class _ShotsPageState extends State<ShotsPage> {
       final item = _dismissedHistory.removeLast();
       final id = item['id']?.toString() ?? '';
       if (id.isNotEmpty) {
+        AnalyticsService.instance.logShotUndo(itemId: id);
         _dismissedIds.remove(id);
         _persistDismissed();
       }
@@ -413,6 +421,10 @@ class _ShotsPageState extends State<ShotsPage> {
     final opacity = isFront ? (1.0 - (-dy / screenH).clamp(0.0, 1.0)) : 1.0;
 
     void navigateToDetail() {
+      if (itemId.isNotEmpty) {
+        AnalyticsService.instance.logShotTapped(itemId: itemId);
+        AnalyticsService.instance.logArticleView(articleId: itemId, title: title, source: 'shots');
+      }
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -436,6 +448,7 @@ class _ShotsPageState extends State<ShotsPage> {
       child: Transform.translate(
         offset: Offset(0, dy),
         child: _ShotCard(
+          itemId: itemId,
           title: title,
           imageUrl: imageUrl,
           description: description,
@@ -503,6 +516,7 @@ class _ShotsPageState extends State<ShotsPage> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ShotCard extends StatelessWidget {
+  final String itemId;
   final String title;
   final String? imageUrl;
   final String description;
@@ -517,6 +531,7 @@ class _ShotCard extends StatelessWidget {
   final VoidCallback? onFavorite;
 
   const _ShotCard({
+    required this.itemId,
     required this.title,
     this.imageUrl,
     required this.description,
@@ -690,28 +705,46 @@ class _ShotCard extends StatelessWidget {
                               _QuestionCapsule(
                                 label: 'Ask Assistant',
                                 icon: Icons.chat_bubble_outline,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => NewsAssistantPage(
-                                      newsTitle: newsTitle,
-                                      prefillQuestion: '',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              ...questionsList.map(
-                                (q) => _QuestionCapsule(
-                                  label: q,
-                                  onTap: () => Navigator.push(
+                                onTap: () {
+                                  if (itemId.isNotEmpty) {
+                                    AnalyticsService.instance.logShotAssistantOpened(
+                                      itemId: itemId,
+                                      hasPrefillQuestion: false,
+                                    );
+                                  }
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => NewsAssistantPage(
                                         newsTitle: newsTitle,
-                                        prefillQuestion: q,
+                                        prefillQuestion: '',
+                                        source: 'shots',
                                       ),
                                     ),
-                                  ),
+                                  );
+                                },
+                              ),
+                              ...questionsList.map(
+                                (q) => _QuestionCapsule(
+                                  label: q,
+                                  onTap: () {
+                                    if (itemId.isNotEmpty) {
+                                      AnalyticsService.instance.logShotAssistantOpened(
+                                        itemId: itemId,
+                                        hasPrefillQuestion: true,
+                                      );
+                                    }
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => NewsAssistantPage(
+                                          newsTitle: newsTitle,
+                                          prefillQuestion: q,
+                                          source: 'shots',
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                             ],

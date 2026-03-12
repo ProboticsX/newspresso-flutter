@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'sources_modal.dart';
 import 'audio_manager.dart';
 import 'user_preferences.dart';
@@ -92,26 +93,43 @@ class _PodcastsPageState extends State<PodcastsPage> {
       final updateData = <String, dynamic>{'podcasts_unlocked': updated};
       if (newLimit != null) updateData['podcast_limit'] = newLimit;
       await _supabase.from('users').update(updateData).eq('id', userId);
+      AnalyticsService.instance.logPodcastUnlocked(
+        podcastId: podcastId,
+        unlocksRemaining: newLimit ?? 0,
+      );
       setState(() {
         _unlockedIds = updated.toSet();
         if (newLimit != null) _podcastLimit = newLimit;
       });
+      AnalyticsService.instance.logPodcastPlay(podcastId: podcastId, title: item.title);
       AudioManager.instance.playPodcast(item);
     } catch (_) {}
+  }
+
+  void _logPlayOrPause(String podcastId, PodcastItem item) {
+    final isCurrent = AudioManager.instance.currentPodcast?.audioUrl == item.audioUrl;
+    if (isCurrent && AudioManager.instance.isPlaying) {
+      AnalyticsService.instance.logPodcastPause(podcastId: podcastId);
+    } else {
+      AnalyticsService.instance.logPodcastPlay(podcastId: podcastId, title: item.title);
+    }
   }
 
   void _onPodcastTap(String podcastId, PodcastItem item) {
     // Premium: play directly, no unlock needed
     if (_podcastLimit == null) {
+      _logPlayOrPause(podcastId, item);
       AudioManager.instance.playPodcast(item);
       return;
     }
     if (_unlockedIds.contains(podcastId)) {
+      _logPlayOrPause(podcastId, item);
       AudioManager.instance.playPodcast(item);
       return;
     }
     // Block if limit reached (non-premium only)
     if (_podcastLimit! <= 0) {
+      AnalyticsService.instance.logPodcastLimitHit();
       _showUpgradeDialog();
       return;
     }
@@ -487,10 +505,12 @@ class _PodcastsPageState extends State<PodcastsPage> {
                                     children: [
                                       if (podcastItem.sources.isNotEmpty)
                                         GestureDetector(
-                                          onTap: () => showSourcesModal(
-                                            context,
-                                            podcastItem.sources,
-                                          ),
+                                          onTap: () {
+                                            AnalyticsService.instance.logPodcastSourcesViewed(
+                                              podcastId: podcastId,
+                                            );
+                                            showSourcesModal(context, podcastItem.sources);
+                                          },
                                           behavior: HitTestBehavior.opaque,
                                           child: Padding(
                                             padding: const EdgeInsets.only(

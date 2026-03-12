@@ -338,7 +338,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ── Page 0 actions ───────────────────────────────────────────────────────
 
-  void _continuePage0() => _animateToPage(1);
+  void _continuePage0() {
+    AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'phone_otp', stepNumber: 0);
+    _animateToPage(1);
+  }
 
   // ── Page 1 actions ───────────────────────────────────────────────────────
 
@@ -351,19 +354,26 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       return;
     }
     setState(() => _nameError = null);
+    AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'name', stepNumber: 1);
     _animateToPage(2);
   }
 
   // ── Page 2 actions ───────────────────────────────────────────────────────
 
   void _continuePage2() {
-    if (_isAgeValid) _animateToPage(3);
+    if (_isAgeValid) {
+      AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'date_of_birth', stepNumber: 2);
+      _animateToPage(3);
+    }
   }
 
   // ── Page 3 actions ───────────────────────────────────────────────────────
 
   void _continuePage3() {
-    if (_selectedGender != null) _animateToPage(4);
+    if (_selectedGender != null) {
+      AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'gender', stepNumber: 3);
+      _animateToPage(4);
+    }
   }
 
   // ── Page 4 actions (username) ─────────────────────────────────────────────
@@ -417,6 +427,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   void _continuePage4() {
     if (_usernameSuccess == null || _isCheckingUsername) return;
+    AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'username', stepNumber: 4);
     _animateToPage(5);
   }
 
@@ -476,6 +487,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _submitOnboarding() async {
     if (!_canCreateAccount) return;
+    AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'location', stepNumber: 5);
+    AnalyticsService.instance.logOnboardingLocationMethod(
+      method: _locationPermissionGranted ? 'auto' : 'manual',
+    );
     setState(() => _isLoading = true);
     try {
       final user = Supabase.instance.client.auth.currentUser!;
@@ -504,6 +519,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
+        AnalyticsService.instance.logOnboardingComplete();
         await Future.delayed(const Duration(milliseconds: 2500));
         widget.onComplete();
       }

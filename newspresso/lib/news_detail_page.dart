@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
 
@@ -75,6 +76,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
     if (userId == null || itemId == null) return;
     final newVal = !_isFavorited;
     setState(() => _isFavorited = newVal);
+    AnalyticsService.instance.logArticleFavorite(articleId: itemId, added: newVal);
     try {
       final result = await Supabase.instance.client
           .from('users')
@@ -231,8 +233,12 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                         InkWell(
                           key: _shareButtonKey,
                           onTap: () {
-                            final url =
-                                'https://www.newspresso.org/news/${widget.newsItemId}';
+                            final itemId = widget.newsItemId!;
+                            AnalyticsService.instance.logArticleShare(
+                              articleId: itemId,
+                              method: 'native',
+                            );
+                            final url = 'https://www.newspresso.org/news/$itemId';
                             final box = _shareButtonKey.currentContext
                                 ?.findRenderObject() as RenderBox?;
                             final origin = box != null
@@ -378,6 +384,11 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                       GestureDetector(
                         onTap: () {
                           if (widget.articlesList.isNotEmpty) {
+                            if (widget.newsItemId != null) {
+                              AnalyticsService.instance.logArticleSourcesViewed(
+                                articleId: widget.newsItemId!,
+                              );
+                            }
                             showSourcesModal(context, widget.articlesList);
                           }
                         },
@@ -491,12 +502,28 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                           _modeTab(
                             label: 'Deep Dive',
                             selected: _selectedMode == 0,
-                            onTap: () => setState(() => _selectedMode = 0),
+                            onTap: () {
+                              setState(() => _selectedMode = 0);
+                              if (widget.newsItemId != null) {
+                                AnalyticsService.instance.logArticleReadModeSelected(
+                                  articleId: widget.newsItemId!,
+                                  mode: 'deep_dive',
+                                );
+                              }
+                            },
                           ),
                           _modeTab(
                             label: 'Explain in under 100',
                             selected: _selectedMode == 1,
-                            onTap: () => setState(() => _selectedMode = 1),
+                            onTap: () {
+                              setState(() => _selectedMode = 1);
+                              if (widget.newsItemId != null) {
+                                AnalyticsService.instance.logArticleReadModeSelected(
+                                  articleId: widget.newsItemId!,
+                                  mode: 'under_100',
+                                );
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -543,6 +570,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                                 builder: (context) => NewsAssistantPage(
                                   newsTitle: widget.contentTitle,
                                   prefillQuestion: '',
+                                  source: 'detail',
                                 ),
                               ),
                             );
@@ -579,15 +607,24 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    ...widget.questionsList.map((q) {
+                    ...widget.questionsList.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final q = entry.value;
                       return GestureDetector(
                         onTap: () {
+                          if (widget.newsItemId != null) {
+                            AnalyticsService.instance.logArticleQuestionTapped(
+                              articleId: widget.newsItemId!,
+                              questionIndex: idx,
+                            );
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => NewsAssistantPage(
                                 newsTitle: widget.contentTitle,
                                 prefillQuestion: q,
+                                source: 'detail',
                               ),
                             ),
                           );

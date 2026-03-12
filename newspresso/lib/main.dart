@@ -283,6 +283,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
     debugPrint('[DeepLink] segments: $segments');
     if (segments.length >= 2 && segments[0] == 'news') {
       final newsId = segments[1];
+      AnalyticsService.instance.logDeepLinkOpened(itemId: newsId);
       await _openNewsById(newsId);
     }
   }
@@ -540,14 +541,20 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
                         activeIcon: Icons.local_cafe,
                         label: 'Shots',
                         isSelected: _selectedIndex == 0,
-                        onTap: () => setState(() => _selectedIndex = 0),
+                        onTap: () {
+                          AnalyticsService.instance.logTabSwitch(tabName: 'shots');
+                          setState(() => _selectedIndex = 0);
+                        },
                       ),
                       _NavItem(
                         icon: Icons.language_outlined,
                         activeIcon: Icons.language,
                         label: 'Explore',
                         isSelected: _selectedIndex == 1,
-                        onTap: () => setState(() => _selectedIndex = 1),
+                        onTap: () {
+                          AnalyticsService.instance.logTabSwitch(tabName: 'explore');
+                          setState(() => _selectedIndex = 1);
+                        },
                       ),
                       _NavItem(
                         icon: Icons.play_circle_outline,
@@ -555,6 +562,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
                         label: 'Podcasts',
                         isSelected: _selectedIndex == 2,
                         onTap: () {
+                          AnalyticsService.instance.logTabSwitch(tabName: 'podcasts');
                           _podcastsRefresh.value++;
                           setState(() => _selectedIndex = 2);
                         },
@@ -564,7 +572,10 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
                         activeIcon: Icons.person,
                         label: 'Profile',
                         isSelected: _selectedIndex == 3,
-                        onTap: () => setState(() => _selectedIndex = 3),
+                        onTap: () {
+                          AnalyticsService.instance.logTabSwitch(tabName: 'profile');
+                          setState(() => _selectedIndex = 3);
+                        },
                       ),
                     ],
                   ),

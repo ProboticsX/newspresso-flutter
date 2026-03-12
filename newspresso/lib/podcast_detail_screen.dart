@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'analytics_service.dart';
 import 'audio_manager.dart';
 import 'sources_modal.dart';
 import 'news_assistant_page.dart';
@@ -19,6 +20,7 @@ class PodcastDetailScreen extends StatefulWidget {
 class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
   BannerAd? _bannerAd;
   bool _bannerAdLoaded = false;
+  bool _completionLogged = false;
 
   @override
   void initState() {
@@ -229,10 +231,12 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                           ),
                           if (widget.podcast.sources.isNotEmpty)
                             GestureDetector(
-                              onTap: () => showSourcesModal(
-                                context,
-                                widget.podcast.sources,
-                              ),
+                              onTap: () {
+                                AnalyticsService.instance.logPodcastSourcesViewed(
+                                  podcastId: widget.podcast.audioUrl,
+                                );
+                                showSourcesModal(context, widget.podcast.sources);
+                              },
                               behavior: HitTestBehavior.opaque,
                               child: Row(
                                 children: [
@@ -358,6 +362,17 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                                   final duration = isCurrent
                                       ? (durSnap.data ?? Duration.zero)
                                       : Duration.zero;
+                                  // Completion: fire once when within 5s of end
+                                  if (isCurrent &&
+                                      duration.inSeconds > 0 &&
+                                      position.inSeconds > 0 &&
+                                      duration.inSeconds - position.inSeconds <= 5 &&
+                                      !_completionLogged) {
+                                    _completionLogged = true;
+                                    AnalyticsService.instance.logPodcastCompleted(
+                                      podcastId: widget.podcast.audioUrl,
+                                    );
+                                  }
 
                                   return Column(
                                     children: [
@@ -443,6 +458,11 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                                             ),
                                             onPressed: () {
                                               if (isCurrent) {
+                                                AnalyticsService.instance.logPodcastSeeked(
+                                                  podcastId: widget.podcast.audioUrl,
+                                                  direction: 'backward',
+                                                  seconds: 10,
+                                                );
                                                 final newPos =
                                                     position -
                                                     const Duration(seconds: 10);
@@ -460,16 +480,23 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                                             onTap: () {
                                               if (isCurrent) {
                                                 if (isPlaying) {
+                                                  AnalyticsService.instance.logPodcastPause(
+                                                    podcastId: widget.podcast.audioUrl,
+                                                  );
                                                   AudioManager.instance.pause();
                                                 } else {
-                                                  AudioManager.instance
-                                                      .resume();
+                                                  AnalyticsService.instance.logPodcastPlay(
+                                                    podcastId: widget.podcast.audioUrl,
+                                                    title: widget.podcast.title,
+                                                  );
+                                                  AudioManager.instance.resume();
                                                 }
                                               } else {
-                                                AudioManager.instance
-                                                    .playPodcast(
-                                                      widget.podcast,
-                                                    );
+                                                AnalyticsService.instance.logPodcastPlay(
+                                                  podcastId: widget.podcast.audioUrl,
+                                                  title: widget.podcast.title,
+                                                );
+                                                AudioManager.instance.playPodcast(widget.podcast);
                                               }
                                             },
                                             child: Container(
@@ -499,6 +526,11 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                                             onPressed: () {
                                               if (isCurrent &&
                                                   duration.inMilliseconds > 0) {
+                                                AnalyticsService.instance.logPodcastSeeked(
+                                                  podcastId: widget.podcast.audioUrl,
+                                                  direction: 'forward',
+                                                  seconds: 10,
+                                                );
                                                 final newPos =
                                                     position +
                                                     const Duration(seconds: 10);
@@ -560,6 +592,7 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                                     builder: (context) => NewsAssistantPage(
                                       newsTitle: widget.podcast.title,
                                       prefillQuestion: '',
+                                      source: 'podcast',
                                     ),
                                   ),
                                 );
@@ -596,15 +629,22 @@ class _PodcastDetailScreenState extends State<PodcastDetailScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        ...widget.podcast.questions.map((q) {
+                        ...widget.podcast.questions.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final q = entry.value;
                           return GestureDetector(
                             onTap: () {
+                              AnalyticsService.instance.logPodcastFollowupTapped(
+                                podcastId: widget.podcast.audioUrl,
+                                questionIndex: idx,
+                              );
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => NewsAssistantPage(
                                     newsTitle: widget.podcast.title,
                                     prefillQuestion: q.toString(),
+                                    source: 'podcast',
                                   ),
                                 ),
                               );
