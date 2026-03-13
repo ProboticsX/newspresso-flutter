@@ -648,12 +648,27 @@ class _NewsListPageState extends State<NewsListPage> {
   bool _isLoading = true;
   String? _error;
 
+  // Pagination
+  final ScrollController _scrollController = ScrollController();
+  int _fetchOffset = 0;
+  bool _isFetchingMore = false;
+  bool _hasMore = true;
+  static const int _pageSize = 20;
+
   @override
   void initState() {
     super.initState();
     _fetchNews();
+    _scrollController.addListener(_onScroll);
     UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
     UserPreferences.instance.categoryPreferencesNotifier.addListener(_onCategoryPreferencesChange);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      _fetchMoreNews();
+    }
   }
 
   void _onLanguageChange() => setState(() {});
@@ -661,6 +676,8 @@ class _NewsListPageState extends State<NewsListPage> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
     UserPreferences.instance.categoryPreferencesNotifier.removeListener(_onCategoryPreferencesChange);
     super.dispose();
@@ -674,7 +691,7 @@ class _NewsListPageState extends State<NewsListPage> {
       if (userId != null) {
         response = await supabase.rpc(
           'get_personalized_feed_tier1',
-          params: {'p_user_id': userId, 'p_limit': 50, 'p_offset': 0},
+          params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': 0},
         );
       } else {
         response = await supabase
@@ -682,11 +699,14 @@ class _NewsListPageState extends State<NewsListPage> {
             .select(
               'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
             )
-            .order('timestamp', ascending: false);
+            .order('timestamp', ascending: false)
+            .range(0, _pageSize - 1);
       }
 
       setState(() {
         _newsList = response;
+        _fetchOffset = 0;
+        _hasMore = response.length >= _pageSize;
         _isLoading = false;
       });
     } catch (e) {
@@ -694,6 +714,39 @@ class _NewsListPageState extends State<NewsListPage> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _fetchMoreNews() async {
+    if (_isFetchingMore || !_hasMore) return;
+    _isFetchingMore = true;
+    final nextOffset = _fetchOffset + _pageSize;
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      List<dynamic> response;
+      if (userId != null) {
+        response = await supabase.rpc(
+          'get_personalized_feed_tier1',
+          params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': nextOffset},
+        );
+      } else {
+        response = await supabase
+            .from('newspresso_aggregated_news_in')
+            .select(
+              'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
+            )
+            .order('timestamp', ascending: false)
+            .range(nextOffset, nextOffset + _pageSize - 1);
+      }
+
+      setState(() {
+        _fetchOffset = nextOffset;
+        _hasMore = response.length >= _pageSize;
+        _newsList.addAll(response);
+        _isFetchingMore = false;
+      });
+    } catch (_) {
+      _isFetchingMore = false;
     }
   }
 
@@ -754,8 +807,19 @@ class _NewsListPageState extends State<NewsListPage> {
                         ),
                       )
                     : ListView.builder(
-                        itemCount: _newsList.length,
+                        controller: _scrollController,
+                        itemCount: _newsList.length + (_isFetchingMore ? 1 : 0),
                         itemBuilder: (context, index) {
+                          if (index == _newsList.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFFC8936A),
+                                ),
+                              ),
+                            );
+                          }
                           final raw = _newsList[index] as Map<String, dynamic>;
                           final item = UserPreferences.resolveContent(
                               raw, UserPreferences.instance.language);

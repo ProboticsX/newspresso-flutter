@@ -28,6 +28,12 @@ class _ShotsPageState extends State<ShotsPage> {
   List<Map<String, dynamic>> _dismissedHistory = [];
   Set<String> _dismissedIds = {};
 
+  // Pagination
+  int _fetchOffset = 0;
+  bool _isFetchingMore = false;
+  static const int _pageSize = 30;
+  static const int _prefetchThreshold = 10;
+
   // Drag state
   double _dragOffset = 0;
   bool _isDragging = false;
@@ -126,7 +132,7 @@ class _ShotsPageState extends State<ShotsPage> {
       if (userId != null) {
         res = await _supabase.rpc(
           'get_personalized_feed_tier1',
-          params: {'p_user_id': userId, 'p_limit': 100, 'p_offset': 0},
+          params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': 0},
         );
       } else {
         res = await _supabase
@@ -134,7 +140,8 @@ class _ShotsPageState extends State<ShotsPage> {
             .select(
               'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
             )
-            .order('timestamp', ascending: false);
+            .order('timestamp', ascending: false)
+            .range(0, _pageSize - 1);
       }
 
       final items = res
@@ -145,6 +152,7 @@ class _ShotsPageState extends State<ShotsPage> {
       setState(() {
         _allItems = items;
         _isLoading = false;
+        _fetchOffset = 0;
         _nextIndex = 0;
         _stack.clear();
         _fillStack();
@@ -154,6 +162,49 @@ class _ShotsPageState extends State<ShotsPage> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _fetchMoreShots() async {
+    if (_isFetchingMore) return;
+    _isFetchingMore = true;
+    final nextOffset = _fetchOffset + _pageSize;
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      List<dynamic> res;
+      if (userId != null) {
+        res = await _supabase.rpc(
+          'get_personalized_feed_tier1',
+          params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': nextOffset},
+        );
+      } else {
+        res = await _supabase
+            .from('newspresso_aggregated_news_in')
+            .select(
+              'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
+            )
+            .order('timestamp', ascending: false)
+            .range(nextOffset, nextOffset + _pageSize - 1);
+      }
+
+      if (res.isEmpty) {
+        _isFetchingMore = false;
+        return;
+      }
+
+      final newItems = res
+          .map((e) => e as Map<String, dynamic>)
+          .where((item) => !_dismissedIds.contains(item['id']?.toString() ?? ''))
+          .toList();
+
+      setState(() {
+        _fetchOffset = nextOffset;
+        _allItems.addAll(newItems);
+      });
+    } catch (_) {
+      // silently fail — user still has remaining cards
+    } finally {
+      _isFetchingMore = false;
     }
   }
 
@@ -210,11 +261,13 @@ class _ShotsPageState extends State<ShotsPage> {
 
   void _fillStack() {
     while (_stack.length < _stackSize && _nextIndex < _allItems.length) {
-      _stack.insert(
-        0,
-        _allItems[_nextIndex],
-      ); // insert at front (bottom of visual stack)
+      _stack.insert(0, _allItems[_nextIndex]);
       _nextIndex++;
+    }
+    // Silently prefetch next page when running low
+    final remaining = _allItems.length - _nextIndex;
+    if (remaining <= _prefetchThreshold) {
+      _fetchMoreShots();
     }
   }
 
