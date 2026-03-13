@@ -47,13 +47,16 @@ class _ShotsPageState extends State<ShotsPage> {
     _checkAndLoadAd();
     _fetchFavorites();
     UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
+    UserPreferences.instance.categoryPreferencesNotifier.addListener(_onCategoryPreferencesChange);
   }
 
   void _onLanguageChange() => setState(() {});
+  void _onCategoryPreferencesChange() => _fetchShots();
 
   @override
   void dispose() {
     UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
+    UserPreferences.instance.categoryPreferencesNotifier.removeListener(_onCategoryPreferencesChange);
     _interstitialAd?.dispose();
     super.dispose();
   }
@@ -117,14 +120,24 @@ class _ShotsPageState extends State<ShotsPage> {
 
   Future<void> _fetchShots() async {
     try {
-      final res = await _supabase
-          .from('newspresso_aggregated_news_in')
-          .select(
-            'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
-          )
-          .order('timestamp', ascending: false);
+      final userId = _supabase.auth.currentUser?.id;
 
-      final items = (res as List<dynamic>)
+      List<dynamic> res;
+      if (userId != null) {
+        res = await _supabase.rpc(
+          'get_personalized_feed_tier1',
+          params: {'p_user_id': userId, 'p_limit': 100, 'p_offset': 0},
+        );
+      } else {
+        res = await _supabase
+            .from('newspresso_aggregated_news_in')
+            .select(
+              'id, content_title, url_to_image, content_description, content_summary, timestamp, articles, questions, translations',
+            )
+            .order('timestamp', ascending: false);
+      }
+
+      final items = res
           .map((e) => e as Map<String, dynamic>)
           .where((item) => !_dismissedIds.contains(item['id']?.toString() ?? ''))
           .toList();

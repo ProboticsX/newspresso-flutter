@@ -653,24 +653,37 @@ class _NewsListPageState extends State<NewsListPage> {
     super.initState();
     _fetchNews();
     UserPreferences.instance.languageNotifier.addListener(_onLanguageChange);
+    UserPreferences.instance.categoryPreferencesNotifier.addListener(_onCategoryPreferencesChange);
   }
 
   void _onLanguageChange() => setState(() {});
+  void _onCategoryPreferencesChange() => _fetchNews();
 
   @override
   void dispose() {
     UserPreferences.instance.languageNotifier.removeListener(_onLanguageChange);
+    UserPreferences.instance.categoryPreferencesNotifier.removeListener(_onCategoryPreferencesChange);
     super.dispose();
   }
 
   Future<void> _fetchNews() async {
     try {
-      final response = await supabase
-          .from('newspresso_aggregated_news_in')
-          .select(
-            'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
-          )
-          .order('timestamp', ascending: false);
+      final userId = supabase.auth.currentUser?.id;
+
+      List<dynamic> response;
+      if (userId != null) {
+        response = await supabase.rpc(
+          'get_personalized_feed_tier1',
+          params: {'p_user_id': userId, 'p_limit': 50, 'p_offset': 0},
+        );
+      } else {
+        response = await supabase
+            .from('newspresso_aggregated_news_in')
+            .select(
+              'id, content_title, url_to_image, content_summary, content_description, timestamp, articles, questions, translations',
+            )
+            .order('timestamp', ascending: false);
+      }
 
       setState(() {
         _newsList = response;

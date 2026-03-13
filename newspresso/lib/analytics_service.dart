@@ -217,6 +217,30 @@ class AnalyticsService {
         parameters: {'from_language': fromLanguage, 'to_language': toLanguage},
       ) ?? Future.value();
 
+  // ── RecSys events ─────────────────────────────────────────────────────────
+
+  Future<void> logCategoryPreferencesSaved({
+    required List<String> categories,
+  }) =>
+      _analytics?.logEvent(
+        name: 'category_preferences_saved',
+        parameters: {
+          'categories': categories.join(','),
+          'count': categories.length,
+        },
+      ) ?? Future.value();
+
+  Future<void> logCategoryPreferencesUpdated({
+    required List<String> categories,
+  }) =>
+      _analytics?.logEvent(
+        name: 'category_preferences_updated',
+        parameters: {
+          'categories': categories.join(','),
+          'count': categories.length,
+        },
+      ) ?? Future.value();
+
   // ── Phone OTP events ──────────────────────────────────────────────────────
 
   Future<void> logPhoneOtpScreenView() =>

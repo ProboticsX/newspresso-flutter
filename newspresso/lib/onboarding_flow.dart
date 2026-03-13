@@ -106,6 +106,23 @@ const List<Map<String, String>> kIndianCities = [
   {'city': 'Puducherry', 'state': 'Puducherry'},
 ];
 
+// ── News categories for personalisation ───────────────────────────────────────
+
+const List<Map<String, String>> kCategories = [
+  {'slug': 'technology',    'label': 'Technology',    'icon': '💻'},
+  {'slug': 'business',      'label': 'Business',      'icon': '📈'},
+  {'slug': 'politics',      'label': 'Politics',      'icon': '🏛️'},
+  {'slug': 'sports',        'label': 'Sports',        'icon': '🏏'},
+  {'slug': 'entertainment', 'label': 'Entertainment', 'icon': '🎬'},
+  {'slug': 'health',        'label': 'Health',        'icon': '🏥'},
+  {'slug': 'science',       'label': 'Science',       'icon': '🔬'},
+  {'slug': 'world',         'label': 'World',         'icon': '🌍'},
+  {'slug': 'crime',         'label': 'Crime',         'icon': '⚖️'},
+  {'slug': 'education',     'label': 'Education',     'icon': '📚'},
+  {'slug': 'environment',   'label': 'Environment',   'icon': '🌱'},
+  {'slug': 'lifestyle',     'label': 'Lifestyle',     'icon': '✨'},
+];
+
 class OnboardingFlow extends StatefulWidget {
   final VoidCallback onComplete;
 
@@ -188,6 +205,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ── Page 5: Location ──────────────────────────────────────────────────────
   LocationPermission _locationPermission = LocationPermission.denied;
+
+  // ── Page 6: Category Preferences ──────────────────────────────────────────
+  Set<String> _selectedCategories = {};
   bool _isCheckingLocation = false;
   bool _isFetchingGpsCity = false;
   String? _gpsCity;
@@ -433,6 +453,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ── Page 5 actions (location) ─────────────────────────────────────────────
 
+  void _continuePage5() {
+    if (!_canCreateAccount) return;
+    AnalyticsService.instance.logOnboardingStepCompleted(
+      stepName: 'location',
+      stepNumber: 5,
+    );
+    AnalyticsService.instance.logOnboardingLocationMethod(
+      method: _locationPermissionGranted ? 'auto' : 'manual',
+    );
+    _animateToPage(6);
+  }
+
   bool get _locationPermissionGranted =>
       _locationPermission == LocationPermission.always ||
       _locationPermission == LocationPermission.whileInUse;
@@ -487,9 +519,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _submitOnboarding() async {
     if (!_canCreateAccount) return;
-    AnalyticsService.instance.logOnboardingStepCompleted(stepName: 'location', stepNumber: 5);
-    AnalyticsService.instance.logOnboardingLocationMethod(
-      method: _locationPermissionGranted ? 'auto' : 'manual',
+    AnalyticsService.instance.logOnboardingStepCompleted(
+      stepName: 'category_preferences',
+      stepNumber: 6,
+    );
+    AnalyticsService.instance.logCategoryPreferencesSaved(
+      categories: _selectedCategories.toList(),
     );
     setState(() => _isLoading = true);
     try {
@@ -516,6 +551,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         'podcast_limit': 3,
         'phone': _verifiedPhone,
         'phone_verified': true,
+        'category_preferences': _selectedCategories.toList(),
       });
       if (mounted) {
         setState(() => _showCreateSuccess = true);
@@ -650,6 +686,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                             _buildGenderPage(),
                             _buildUsernamePage(),
                             _buildLocationPage(),
+                            _buildCategoriesPage(),
                           ],
                         ),
                 ),
@@ -681,7 +718,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
           const Spacer(),
           Row(
-            children: List.generate(6, (i) {
+            children: List.generate(7, (i) {
               final isActive = i == _currentPage;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
@@ -1785,12 +1822,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
           const SizedBox(height: 32),
 
-          // ── Create Account button ─────────────────────────────────────────
+          // ── Continue button (advances to category preferences page) ──────
           SizedBox(
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: _canCreateAccount ? _submitOnboarding : null,
+              onPressed: _canCreateAccount ? _continuePage5 : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFC8936A),
                 disabledBackgroundColor: const Color(0xFF3A2A1A),
@@ -1800,18 +1837,140 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Create Account',
+                  Text('Continue',
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.w600)),
                   SizedBox(width: 8),
-                  Icon(Icons.check, color: Colors.white, size: 18),
+                  Icon(Icons.arrow_forward, color: Colors.white, size: 18),
                 ],
               ),
             ),
           ),
 
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  // ── Page 6: Category Preferences ──────────────────────────────────────────
+
+  Widget _buildCategoriesPage() {
+    final canContinue = _selectedCategories.length >= 3;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Center(child: _IconCircle(icon: Icons.interests_outlined)),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              'What interests you?',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text(
+              'Pick at least 3 topics to personalise your feed',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: kCategories.map((cat) {
+                  final slug = cat['slug']!;
+                  final selected = _selectedCategories.contains(slug);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      if (selected) {
+                        _selectedCategories.remove(slug);
+                      } else {
+                        _selectedCategories.add(slug);
+                      }
+                    }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFFC8936A)
+                            : Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFFC8936A)
+                              : Colors.white24,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(cat['icon']!,
+                              style: const TextStyle(fontSize: 15)),
+                          const SizedBox(width: 7),
+                          Text(
+                            cat['label']!,
+                            style: TextStyle(
+                              color: selected ? Colors.black : Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: canContinue ? _submitOnboarding : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFC8936A),
+                disabledBackgroundColor: const Color(0xFF3A2A1A),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    canContinue
+                        ? 'Create Account'
+                        : 'Select at least 3',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  if (canContinue) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.check, color: Colors.white, size: 18),
+                  ],
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
         ],
       ),

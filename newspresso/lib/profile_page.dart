@@ -6,7 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'audio_manager.dart';
-import 'onboarding_flow.dart' show kIndianCities;
+import 'analytics_service.dart';
+import 'onboarding_flow.dart' show kIndianCities, kCategories;
 import 'package:url_launcher/url_launcher.dart';
 import 'plan_page.dart';
 import 'favorites_page.dart';
@@ -892,6 +893,20 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
     }
   }
 
+  void _showCategoryPicker(BuildContext context) {
+    final current = Set<String>.from(
+        UserPreferences.instance.categoryPreferences);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _CategoryPickerSheet(initial: current),
+    );
+  }
+
   void _showLanguagePicker(BuildContext context) {
     final current = _profile?['language_selected']?.toString() ?? 'en';
     showModalBottomSheet(
@@ -1075,6 +1090,44 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
                             onTap: () => _showLanguagePicker(context),
                           ),
                         ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // ── News Preferences ─────────────────────────────────
+                      _SectionHeader(
+                        icon: Icons.interests_outlined,
+                        label: 'News Preferences',
+                      ),
+                      const SizedBox(height: 8),
+                      ValueListenableBuilder<List<String>>(
+                        valueListenable: UserPreferences
+                            .instance.categoryPreferencesNotifier,
+                        builder: (context, cats, _) {
+                          final subtitle = cats.isEmpty
+                              ? 'No preferences set'
+                              : cats
+                                  .map((s) => kCategories.firstWhere(
+                                        (c) => c['slug'] == s,
+                                        orElse: () => {'label': s},
+                                      )['label']!)
+                                  .join(', ');
+                          return _InfoCard(
+                            children: [
+                              _ActionTile(
+                                iconBg: const Color(0xFF1A0A2A),
+                                icon: Icons.interests_outlined,
+                                iconColor: const Color(0xFFC8936A),
+                                label: 'Interests',
+                                subtitle: subtitle,
+                                labelColor: Colors.white,
+                                showChevron: true,
+                                onTap: () =>
+                                    _showCategoryPicker(context),
+                              ),
+                            ],
+                          );
+                        },
                       ),
 
                       const SizedBox(height: 24),
@@ -2143,6 +2196,144 @@ class _ToggleTile extends StatelessWidget {
             activeThumbColor: const Color(0xFFC8936A),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Category Picker Sheet ────────────────────────────────────────────────────
+
+class _CategoryPickerSheet extends StatefulWidget {
+  final Set<String> initial;
+  const _CategoryPickerSheet({required this.initial});
+
+  @override
+  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+}
+
+class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
+  late Set<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = Set<String>.from(widget.initial);
+  }
+
+  Future<void> _save() async {
+    final cats = _selected.toList();
+    await UserPreferences.instance.setCategoryPreferences(cats);
+    AnalyticsService.instance.logCategoryPreferencesUpdated(categories: cats);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave = _selected.length >= 3;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Your Interests',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Pick at least 3 to personalise your feed',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: kCategories.map((cat) {
+                    final slug = cat['slug']!;
+                    final isSelected = _selected.contains(slug);
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        if (isSelected) {
+                          _selected.remove(slug);
+                        } else {
+                          _selected.add(slug);
+                        }
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFC8936A)
+                              : Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFFC8936A)
+                                : Colors.white24,
+                          ),
+                        ),
+                        child: Text(
+                          '${cat['icon']} ${cat['label']}',
+                          style: TextStyle(
+                            color:
+                                isSelected ? Colors.white : Colors.white70,
+                            fontSize: 14,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: canSave ? _save : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFC8936A),
+                  disabledBackgroundColor: Colors.white12,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  canSave
+                      ? 'Save Preferences'
+                      : 'Select at least ${3 - _selected.length} more',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

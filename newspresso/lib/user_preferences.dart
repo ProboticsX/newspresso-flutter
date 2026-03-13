@@ -8,17 +8,26 @@ class UserPreferences {
   final ValueNotifier<String> languageNotifier = ValueNotifier('en');
   String get language => languageNotifier.value;
 
+  final ValueNotifier<List<String>> categoryPreferencesNotifier =
+      ValueNotifier(<String>[]);
+  List<String> get categoryPreferences => categoryPreferencesNotifier.value;
+
   Future<void> load() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     try {
       final result = await Supabase.instance.client
           .from('users')
-          .select('language_selected')
+          .select('language_selected, category_preferences')
           .eq('id', userId)
           .maybeSingle();
       languageNotifier.value =
           result?['language_selected']?.toString() ?? 'en';
+      final rawCats = result?['category_preferences'];
+      if (rawCats is List) {
+        categoryPreferencesNotifier.value =
+            rawCats.map((e) => e.toString()).toList();
+      }
     } catch (_) {}
   }
 
@@ -30,6 +39,18 @@ class UserPreferences {
       await Supabase.instance.client
           .from('users')
           .update({'language_selected': lang})
+          .eq('id', userId);
+    } catch (_) {}
+  }
+
+  Future<void> setCategoryPreferences(List<String> cats) async {
+    categoryPreferencesNotifier.value = cats;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await Supabase.instance.client
+          .from('users')
+          .update({'category_preferences': cats})
           .eq('id', userId);
     } catch (_) {}
   }
