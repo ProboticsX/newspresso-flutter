@@ -1,6 +1,8 @@
+import 'dart:async' show unawaited;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'analytics_service.dart';
 
 // Must be a top-level function — called by FCM when app is terminated
@@ -19,9 +21,15 @@ class NotificationService {
   // Set by _MainShellState to navigate to an article when a notification is tapped
   void Function(String newsId)? onNotificationTap;
 
+  // Set by _MainShellState to open the Shots tab when a digest notification is tapped
+  void Function()? onDigestNotificationTap;
+
   // Holds a news ID from a terminated-app notification tap, drained once
   // the shell sets onNotificationTap
   String? _pendingNewsId;
+
+  // True if app was cold-started from a digest notification tap
+  bool _pendingDigest = false;
 
   static const _channelId = 'breaking_news';
   static const _channelName = 'Breaking News';
@@ -66,6 +74,13 @@ class NotificationService {
       debugPrint('[NotificationService] subscribeToTopic failed: $e');
     }
 
+    // Save FCM token to Supabase so the digest job can send individual notifications
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) unawaited(_saveFcmToken(token));
+    FirebaseMessaging.instance.onTokenRefresh.listen(
+      (t) => unawaited(_saveFcmToken(t)),
+    );
+
     // Local notifications: used to show FCM messages when app is in foreground
     const androidSettings =
         AndroidInitializationSettings('@drawable/ic_notification');
@@ -102,9 +117,13 @@ class NotificationService {
     // Terminated tap: app was closed, user tapped notification to open it
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
-      final newsId = initial.data['article_id'];
-      if (newsId != null && newsId.isNotEmpty) {
-        _pendingNewsId = newsId;
+      if (initial.data['type'] == 'daily_digest') {
+        _pendingDigest = true;
+      } else {
+        final newsId = initial.data['article_id'];
+        if (newsId != null && newsId.isNotEmpty) {
+          _pendingNewsId = newsId;
+        }
       }
     }
   }
@@ -112,6 +131,10 @@ class NotificationService {
   /// Call this from _MainShellState.initState() after setting [onNotificationTap]
   /// to flush any notification tap that opened the app from a terminated state.
   void drainPending() {
+    if (_pendingDigest) {
+      onDigestNotificationTap?.call();
+      _pendingDigest = false;
+    }
     if (_pendingNewsId != null) {
       _dispatch(_pendingNewsId!);
       _pendingNewsId = null;
@@ -142,6 +165,14 @@ class NotificationService {
   }
 
   void _onNotificationTap(RemoteMessage message) {
+    if (message.data['type'] == 'daily_digest') {
+      if (onDigestNotificationTap != null) {
+        onDigestNotificationTap!();
+      } else {
+        _pendingDigest = true;
+      }
+      return;
+    }
     final newsId = message.data['article_id'];
     if (newsId != null && newsId.isNotEmpty) {
       _dispatch(newsId);
@@ -155,6 +186,19 @@ class NotificationService {
     } else {
       // Shell not ready yet — hold it until drainPending() is called
       _pendingNewsId = newsId;
+    }
+  }
+
+  Future<void> _saveFcmToken(String token) async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      await Supabase.instance.client
+          .from('users')
+          .update({'fcm_token': token})
+          .eq('id', uid);
+    } catch (e) {
+      debugPrint('[NotificationService] failed to save FCM token: $e');
     }
   }
 }

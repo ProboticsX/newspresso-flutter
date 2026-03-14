@@ -256,6 +256,10 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
     NotificationService.instance.onNotificationTap = (newsId) {
       if (mounted) _openNewsById(newsId);
     };
+    // FCM: open Shots tab when a daily digest notification is tapped
+    NotificationService.instance.onDigestNotificationTap = () {
+      if (mounted) setState(() => _selectedIndex = 0);
+    };
     NotificationService.instance.drainPending();
 
     _initDeepLinks();
@@ -373,6 +377,7 @@ class _MainShellState extends State<_MainShell> with WidgetsBindingObserver {
     _deepLinkSub?.cancel();
     _podcastsRefresh.dispose();
     NotificationService.instance.onNotificationTap = null;
+    NotificationService.instance.onDigestNotificationTap = null;
     super.dispose();
   }
 
