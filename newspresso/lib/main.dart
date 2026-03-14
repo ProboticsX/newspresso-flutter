@@ -9,6 +9,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'analytics_service.dart';
+import 'interaction_service.dart';
 import 'notification_service.dart';
 import 'user_preferences.dart';
 
@@ -690,7 +691,7 @@ class _NewsListPageState extends State<NewsListPage> {
       List<dynamic> response;
       if (userId != null) {
         response = await supabase.rpc(
-          'get_personalized_feed_tier1',
+          'get_personalized_feed',
           params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': 0},
         );
       } else {
@@ -726,7 +727,7 @@ class _NewsListPageState extends State<NewsListPage> {
       List<dynamic> response;
       if (userId != null) {
         response = await supabase.rpc(
-          'get_personalized_feed_tier1',
+          'get_personalized_feed',
           params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': nextOffset},
         );
       } else {
@@ -1138,6 +1139,9 @@ class _NewsListPageState extends State<NewsListPage> {
                                           // Ask Assistant Capsule (empty text area)
                                           GestureDetector(
                                             onTap: () {
+                                              if (itemId.isNotEmpty) {
+                                                InteractionService.instance.logAskAssistant(itemId);
+                                              }
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
@@ -1145,6 +1149,8 @@ class _NewsListPageState extends State<NewsListPage> {
                                                       NewsAssistantPage(
                                                         newsTitle: contentTitle,
                                                         prefillQuestion: '',
+                                                        source: 'explore',
+                                                        newsItemId: itemId.isEmpty ? null : itemId,
                                                       ),
                                                 ),
                                               );
@@ -1191,6 +1197,9 @@ class _NewsListPageState extends State<NewsListPage> {
                                           ...questionsList.map((q) {
                                             return GestureDetector(
                                               onTap: () {
+                                                if (itemId.isNotEmpty) {
+                                                  InteractionService.instance.logAskAssistant(itemId);
+                                                }
                                                 Navigator.push(
                                                   context,
                                                   MaterialPageRoute(
@@ -1199,6 +1208,8 @@ class _NewsListPageState extends State<NewsListPage> {
                                                           newsTitle:
                                                               contentTitle,
                                                           prefillQuestion: q,
+                                                          source: 'explore',
+                                                          newsItemId: itemId.isEmpty ? null : itemId,
                                                         ),
                                                   ),
                                                 );

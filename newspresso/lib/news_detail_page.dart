@@ -5,6 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'analytics_service.dart';
+import 'interaction_service.dart';
 import 'news_assistant_page.dart';
 import 'sources_modal.dart';
 
@@ -42,10 +43,12 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
   int _selectedMode = 0; // 0 = Deep Dive, 1 = Explain under 100
   bool _isFavorited = false;
   final _shareButtonKey = GlobalKey();
+  DateTime? _viewStart;
 
   @override
   void initState() {
     super.initState();
+    _viewStart = DateTime.now();
     _checkAndLoadAd();
     if (widget.newsItemId != null) _fetchFavoriteStatus();
   }
@@ -77,6 +80,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
     final newVal = !_isFavorited;
     setState(() => _isFavorited = newVal);
     AnalyticsService.instance.logArticleFavorite(articleId: itemId, added: newVal);
+    if (newVal) InteractionService.instance.logFavorite(itemId);
     try {
       final result = await Supabase.instance.client
           .from('users')
@@ -141,6 +145,12 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
 
   @override
   void dispose() {
+    if (_viewStart != null && widget.newsItemId != null) {
+      final elapsed = DateTime.now().difference(_viewStart!).inSeconds;
+      if (elapsed > 30) {
+        InteractionService.instance.logReadFull(widget.newsItemId!, durationSeconds: elapsed);
+      }
+    }
     _bannerAd?.dispose();
     super.dispose();
   }
@@ -238,6 +248,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                               articleId: itemId,
                               method: 'native',
                             );
+                            InteractionService.instance.logShare(itemId);
                             final url = 'https://www.newspresso.org/news/$itemId';
                             final box = _shareButtonKey.currentContext
                                 ?.findRenderObject() as RenderBox?;
@@ -388,6 +399,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                               AnalyticsService.instance.logArticleSourcesViewed(
                                 articleId: widget.newsItemId!,
                               );
+                              InteractionService.instance.logSourcesOpen(widget.newsItemId!);
                             }
                             showSourcesModal(context, widget.articlesList);
                           }
@@ -564,6 +576,9 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                         ),
                         GestureDetector(
                           onTap: () {
+                            if (widget.newsItemId != null) {
+                              InteractionService.instance.logAskAssistant(widget.newsItemId!);
+                            }
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -571,6 +586,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                                   newsTitle: widget.contentTitle,
                                   prefillQuestion: '',
                                   source: 'detail',
+                                  newsItemId: widget.newsItemId,
                                 ),
                               ),
                             );
@@ -618,6 +634,9 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                               questionIndex: idx,
                             );
                           }
+                          if (widget.newsItemId != null) {
+                            InteractionService.instance.logAskAssistant(widget.newsItemId!);
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -625,6 +644,7 @@ class _NewsDetailPageState extends State<NewsDetailPage> {
                                 newsTitle: widget.contentTitle,
                                 prefillQuestion: q,
                                 source: 'detail',
+                                newsItemId: widget.newsItemId,
                               ),
                             ),
                           );

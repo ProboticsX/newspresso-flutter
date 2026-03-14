@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'analytics_service.dart';
+import 'interaction_service.dart';
 import 'news_assistant_page.dart';
 import 'news_detail_page.dart';
 import 'user_preferences.dart';
@@ -131,7 +132,7 @@ class _ShotsPageState extends State<ShotsPage> {
       List<dynamic> res;
       if (userId != null) {
         res = await _supabase.rpc(
-          'get_personalized_feed_tier1',
+          'get_personalized_feed',
           params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': 0},
         );
       } else {
@@ -174,7 +175,7 @@ class _ShotsPageState extends State<ShotsPage> {
       List<dynamic> res;
       if (userId != null) {
         res = await _supabase.rpc(
-          'get_personalized_feed_tier1',
+          'get_personalized_feed',
           params: {'p_user_id': userId, 'p_limit': _pageSize, 'p_offset': nextOffset},
         );
       } else {
@@ -251,6 +252,7 @@ class _ShotsPageState extends State<ShotsPage> {
     }
     setState(() => _favoritedIds = newSet);
     AnalyticsService.instance.logArticleFavorite(articleId: itemId, added: added);
+    if (added) InteractionService.instance.logFavorite(itemId);
     try {
       await _supabase
           .from('users')
@@ -490,6 +492,7 @@ class _ShotsPageState extends State<ShotsPage> {
       if (itemId.isNotEmpty) {
         AnalyticsService.instance.logShotTapped(itemId: itemId);
         AnalyticsService.instance.logArticleView(articleId: itemId, title: title, source: 'shots');
+        InteractionService.instance.logView(itemId);
       }
       Navigator.push(
         context,
@@ -777,6 +780,7 @@ class _ShotCard extends StatelessWidget {
                                       itemId: itemId,
                                       hasPrefillQuestion: false,
                                     );
+                                    InteractionService.instance.logAskAssistant(itemId);
                                   }
                                   Navigator.push(
                                     context,
@@ -785,6 +789,7 @@ class _ShotCard extends StatelessWidget {
                                         newsTitle: newsTitle,
                                         prefillQuestion: '',
                                         source: 'shots',
+                                        newsItemId: itemId.isEmpty ? null : itemId,
                                       ),
                                     ),
                                   );
@@ -799,6 +804,7 @@ class _ShotCard extends StatelessWidget {
                                         itemId: itemId,
                                         hasPrefillQuestion: true,
                                       );
+                                      InteractionService.instance.logAskAssistant(itemId);
                                     }
                                     Navigator.push(
                                       context,
@@ -807,6 +813,7 @@ class _ShotCard extends StatelessWidget {
                                           newsTitle: newsTitle,
                                           prefillQuestion: q,
                                           source: 'shots',
+                                          newsItemId: itemId.isEmpty ? null : itemId,
                                         ),
                                       ),
                                     );

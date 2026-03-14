@@ -10,12 +10,15 @@ class NewsAssistantPage extends StatefulWidget {
   final String prefillQuestion;
   /// Where the assistant was opened from: 'shots', 'detail', 'podcast', 'favorites', 'explore'
   final String source;
+  /// The news article ID this assistant session is about (used for RecSys interaction logging)
+  final String? newsItemId;
 
   const NewsAssistantPage({
     super.key,
     required this.newsTitle,
     required this.prefillQuestion,
     this.source = 'direct',
+    this.newsItemId,
   });
 
   @override
