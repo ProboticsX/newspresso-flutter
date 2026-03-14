@@ -40,7 +40,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (userId == null) return;
       final result = await Supabase.instance.client
           .from('users')
-          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission, language_selected, phone')
+          .select('first_name, last_name, date_of_birth, gender, username, email, is_premium, location_city, location_state, location_permission, language_selected, phone, digest_notifications_enabled')
           .eq('id', userId)
           .maybeSingle();
       if (mounted) {
@@ -861,6 +861,7 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
   late Map<String, dynamic>? _profile;
   bool _notifPermissionGranted = false;
   bool _breakingNewsEnabled = true;
+  bool _digestEnabled = false;
 
   @override
   void initState() {
@@ -868,6 +869,7 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
     _profile = widget.userProfile != null
         ? Map<String, dynamic>.from(widget.userProfile!)
         : null;
+    _digestEnabled = _profile?['digest_notifications_enabled'] == true;
     _loadNotifState();
   }
 
@@ -891,6 +893,16 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
     } else {
       await FirebaseMessaging.instance.unsubscribeFromTopic('breaking_news');
     }
+  }
+
+  Future<void> _toggleDigest(bool value) async {
+    setState(() => _digestEnabled = value);
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    await Supabase.instance.client
+        .from('users')
+        .update({'digest_notifications_enabled': value})
+        .eq('id', userId);
   }
 
   void _showCategoryPicker(BuildContext context) {
@@ -1151,7 +1163,7 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
                               labelColor: Colors.orange,
                               showChevron: false,
                             )
-                          else
+                          else ...[
                             _ToggleTile(
                               iconBg: const Color(0xFF1A2A1A),
                               icon: Icons.campaign_outlined,
@@ -1160,6 +1172,15 @@ class _UserPreferencesPageState extends State<UserPreferencesPage> {
                               value: _breakingNewsEnabled,
                               onChanged: _toggleBreakingNews,
                             ),
+                            _ToggleTile(
+                              iconBg: const Color(0xFF1A1A2A),
+                              icon: Icons.newspaper_outlined,
+                              label: 'Daily Digest',
+                              subtitle: 'Personalized headlines based on your interests',
+                              value: _digestEnabled,
+                              onChanged: _toggleDigest,
+                            ),
+                          ],
                         ],
                       ),
 
